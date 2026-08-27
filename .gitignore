@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.env
+backend/database/detectai.db
+.venv/
+venv/
