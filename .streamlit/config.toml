@@ -1,0 +1,16 @@
+[client]
+showErrorDetails = true
+
+[server]
+port = 8501
+maxUploadSize = 200
+
+[logger]
+level = "info"
+
+[theme]
+primaryColor = "#00f2fe"
+backgroundColor = "#0d0f17"
+secondaryBackgroundColor = "#1e293b"
+textColor = "#e2e8f0"
+font = "sans serif"
