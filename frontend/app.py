@@ -336,6 +336,102 @@ def unlock_achievement(title, icon="🏆"):
         st.toast(f"ACHIEVEMENT UNLOCKED: {icon} {title}!", icon="🎉")
         play_sound("victory")
 
+def resume_case_session(case_id):
+    """Resume a previously created or in-progress case from database"""
+    if not case_id or not str(case_id).strip():
+        st.error("Invalid case ID provided.")
+        return
+    
+    case_id = str(case_id).strip()
+    case_raw = None
+    if USE_DIRECT_SERVICES:
+        try:
+            case_raw = db.get_case(case_id)
+        except Exception as e:
+            print(f"[DetectAI] Error direct fetching case {case_id}: {e}")
+    if not case_raw:
+        try:
+            res = requests.get(f"{BACKEND_URL}/api/cases/{case_id}", timeout=10)
+            if res.status_code == 200:
+                case_raw = res.json().get("case")
+        except Exception as e:
+            st.error(f"Error communicating with backend: {e}")
+            return
+            
+    if not case_raw:
+        st.error(f"Case '{case_id}' was not found in the database.")
+        return
+
+    sanitized_case = dict(case_raw)
+    sanitized_case.pop("ground_truth", None)
+
+    # Fetch logs
+    all_logs = {}
+    if USE_DIRECT_SERVICES:
+        try:
+            all_logs = db.get_all_interrogation_logs_for_case(case_id)
+        except Exception:
+            pass
+    if not all_logs:
+        try:
+            lres = requests.get(f"{BACKEND_URL}/api/cases/{case_id}/logs", timeout=5)
+            if lres.status_code == 200:
+                all_logs = lres.json().get("interrogations", {})
+        except Exception:
+            pass
+
+    # Fetch verdict if case was already completed
+    verdict = None
+    if USE_DIRECT_SERVICES:
+        try:
+            verdict = db.get_case_verdict(case_id)
+        except Exception:
+            pass
+    if not verdict:
+        try:
+            vres = requests.get(f"{BACKEND_URL}/api/cases/{case_id}/verdict", timeout=5)
+            if vres.status_code == 200:
+                verdict = vres.json().get("verdict")
+        except Exception:
+            pass
+
+    # Reconstruct evidence and locations
+    all_evidence = sanitized_case.get("evidence", [])
+    all_evidence_map = {e["id"]: e for e in all_evidence}
+    all_locations = sanitized_case.get("locations", [])
+    
+    collected_ev = []
+    visited_locs = []
+    if verdict:
+        collected_ev = list(all_evidence)
+        visited_locs = [loc.get("id") for loc in all_locations]
+    else:
+        for s_id, s_logs in (all_logs or {}).items():
+            for entry in s_logs:
+                msg = entry.get("message") or entry.get("content") or ""
+                for eid, ev in all_evidence_map.items():
+                    if ev.get("name", "") in msg and ev not in collected_ev:
+                        collected_ev.append(ev)
+        for loc in all_locations:
+            loc_ev_ids = loc.get("evidence_ids", [])
+            if any(eid in [ce["id"] for ce in collected_ev] for eid in loc_ev_ids):
+                if loc.get("id") not in visited_locs:
+                    visited_locs.append(loc.get("id"))
+
+    st.session_state.case_id = case_id
+    st.session_state.case_data = sanitized_case
+    st.session_state.collected_evidence = collected_ev
+    st.session_state.visited_locations = visited_locs
+    st.session_state.chat_history = all_logs or {}
+    st.session_state.verdict = verdict
+    st.session_state.start_time = time.time()
+    st.session_state.used_hints = 0
+    st.session_state.suspect_suspicion = {s["id"]: s.get("suspicion_score", 35) for s in sanitized_case.get("suspects", [])}
+
+    st.success(f"Resumed case: {sanitized_case.get('title', case_id)}")
+    play_sound("clue")
+    st.rerun()
+
 # Sidebar: Controls, Audio Toggle, Notes & Leaderboard Preview
 with st.sidebar:
     st.image("https://img.icons8.com/isometric-line/100/00f2fe/detective.png", width=64)
@@ -434,6 +530,48 @@ with st.sidebar:
                 st.success(f"Case Generated: {case_dict['title']}")
                 play_sound("clue")
                 st.rerun()
+
+    # Case Archives & Resumption in Sidebar
+    st.markdown("---")
+    st.markdown("#### 📂 Case Archives")
+    with st.expander("Resume Existing Investigation", expanded=False):
+        recent_cases = []
+        if USE_DIRECT_SERVICES:
+            try:
+                recent_cases = db.get_recent_cases(limit=12)
+            except Exception:
+                pass
+        if not recent_cases:
+            try:
+                cases_res = requests.get(f"{BACKEND_URL}/api/cases", timeout=4)
+                if cases_res.status_code == 200:
+                    recent_cases = cases_res.json().get("cases", [])
+            except Exception:
+                pass
+
+        if recent_cases:
+            case_options = {
+                f"{c['case_id']} | {c.get('title', 'Mystery Case')} [{c.get('status', 'In Progress')}]": c['case_id']
+                for c in recent_cases
+            }
+            selected_case_label = st.selectbox(
+                "Select Case File",
+                options=list(case_options.keys()),
+                key="resume_case_selector"
+            )
+            selected_case_id = case_options[selected_case_label]
+            if st.button("📂 Resume Selected Case", use_container_width=True):
+                resume_case_session(selected_case_id)
+        else:
+            st.caption("No previous cases saved yet.")
+
+        st.markdown("##### Quick ID Lookup")
+        manual_case_id = st.text_input("Enter Case ID", placeholder="case_xxxx", key="manual_case_id_input")
+        if st.button("🔍 Load by ID", use_container_width=True):
+            if manual_case_id and manual_case_id.strip():
+                resume_case_session(manual_case_id.strip())
+            else:
+                st.warning("Please enter a valid Case ID.")
 
     # Notebook Drawer in Sidebar
     if st.session_state.case_data:

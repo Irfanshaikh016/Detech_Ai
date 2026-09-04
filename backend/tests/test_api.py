@@ -119,3 +119,88 @@ def test_frontend_served(client):
     else:
         # API-only fallback when index.html missing
         assert res.json()["status"] == "online"
+
+
+def test_list_cases(client):
+    gen = client.post("/api/cases/generate", json={"difficulty": "Easy", "crime_type": "Theft"})
+    assert gen.status_code == 200
+    case_id = gen.json()["case_id"]
+
+    res = client.get("/api/cases")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "success"
+    assert "cases" in data
+    cases = data["cases"]
+    assert len(cases) >= 1
+
+    # Locate generated case in list
+    target = next((c for c in cases if c["case_id"] == case_id), None)
+    assert target is not None
+    assert "title" in target
+    assert target["crime_type"] == "Theft"
+    assert target["difficulty"] == "Easy"
+    assert target["is_completed"] is False
+    assert target["status"] == "In Progress"
+
+
+def test_case_resumption_and_logs(client):
+    gen = client.post("/api/cases/generate", json={"difficulty": "Easy", "crime_type": "Theft"})
+    case_id = gen.json()["case_id"]
+    suspect_id = gen.json()["case"]["suspects"][0]["id"]
+
+    # Ask question
+    ask = client.post(f"/api/cases/{case_id}/interrogate", json={
+        "suspect_id": suspect_id,
+        "question": "What is your alibi?",
+    })
+    assert ask.status_code == 200
+
+    # Retrieve all logs for case
+    res = client.get(f"/api/cases/{case_id}/logs")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "success"
+    assert data["case_id"] == case_id
+    assert suspect_id in data["interrogations"]
+    assert len(data["interrogations"][suspect_id]) == 2
+
+
+def test_case_verdict_history(client):
+    gen = client.post("/api/cases/generate", json={"difficulty": "Easy", "crime_type": "Theft"})
+    case_id = gen.json()["case_id"]
+
+    # Pre-verdict check
+    pre = client.get(f"/api/cases/{case_id}/verdict")
+    assert pre.status_code == 200
+    assert pre.json()["verdict"] is None
+
+    # Submit verdict
+    client.post(f"/api/cases/{case_id}/judge", json={
+        "accused_suspect_id": "suspect_1",
+        "motive_provided": "Gambling debts forced theft.",
+        "evidence_ids": ["ev_1"],
+        "player_name": "Resumption Tester",
+    })
+
+    # Post-verdict check
+    post = client.get(f"/api/cases/{case_id}/verdict")
+    assert post.status_code == 200
+    verdict = post.json()["verdict"]
+    assert verdict is not None
+    assert verdict["is_correct"] is True
+    assert verdict["player_name"] == "Resumption Tester"
+
+    # Verify status in case list
+    list_res = client.get("/api/cases")
+    cases = list_res.json()["cases"]
+    c = next((item for item in cases if item["case_id"] == case_id), None)
+    assert c is not None
+    assert c["is_completed"] is True
+    assert c["status"] == "Solved"
+
+
+def test_case_invalid_and_missing_handling(client):
+    assert client.get("/api/cases/nonexistent_case_12345").status_code == 404
+    assert client.get("/api/cases/nonexistent_case_12345/logs").status_code == 404
+    assert client.get("/api/cases/nonexistent_case_12345/verdict").status_code == 404

@@ -34,6 +34,12 @@ def get_leaderboard_endpoint():
     leaderboard = db.get_leaderboard(limit=10)
     return {"status": "success", "leaderboard": leaderboard}
 
+@router.get("")
+@router.get("/")
+def list_cases_endpoint(limit: int = 15):
+    """Retrieve list of recent cases for history and resumption"""
+    cases = db.get_recent_cases(limit=limit)
+    return {"status": "success", "cases": cases}
 
 @router.post("/generate")
 def generate_case_endpoint(req: GenerateCaseRequest):
@@ -64,6 +70,8 @@ def generate_case_endpoint(req: GenerateCaseRequest):
 
 @router.get("/{case_id}")
 def get_case_endpoint(case_id: str):
+    if not case_id or case_id.strip() == "":
+        raise HTTPException(status_code=400, detail="Invalid case ID.")
     case_data = db.get_case(case_id)
     if not case_data:
         raise HTTPException(status_code=404, detail="Case not found in database.")
@@ -71,6 +79,24 @@ def get_case_endpoint(case_id: str):
     sanitized_case = dict(case_data)
     sanitized_case.pop("ground_truth", None)
     return {"status": "success", "case": sanitized_case}
+
+@router.get("/{case_id}/logs")
+def get_case_logs_endpoint(case_id: str):
+    """Retrieve all suspect interrogation logs for a given case"""
+    case_data = db.get_case(case_id)
+    if not case_data:
+        raise HTTPException(status_code=404, detail="Case not found in database.")
+    logs = db.get_all_interrogation_logs_for_case(case_id)
+    return {"status": "success", "case_id": case_id, "interrogations": logs}
+
+@router.get("/{case_id}/verdict")
+def get_case_verdict_endpoint(case_id: str):
+    """Retrieve verdict for a case if one exists"""
+    case_data = db.get_case(case_id)
+    if not case_data:
+        raise HTTPException(status_code=404, detail="Case not found in database.")
+    verdict = db.get_case_verdict(case_id)
+    return {"status": "success", "case_id": case_id, "verdict": verdict}
 
 @router.post("/{case_id}/interrogate")
 def interrogate_endpoint(case_id: str, req: InterrogateRequest):

@@ -102,6 +102,7 @@
   }
   .badge-amber{ border-color:var(--amber); color:var(--amber-bright); }
   .badge-green{ border-color:var(--green); color:#9fc47f; }
+  .badge-red{ border-color:var(--red); color:#e08787; }
   .toast-wrap{ position:fixed; bottom:20px; right:20px; z-index:999; display:flex; flex-direction:column; gap:8px; max-width:340px;}
   .toast{
     background:var(--bg-panel-2); border:1px solid var(--red);
@@ -279,6 +280,7 @@
       <div class="field"><label>Difficulty</label><div class="choice-row" id="diff-choices"></div></div>
       <div class="field"><label>Detective Name</label><input type="text" id="player-name" placeholder="e.g. Detective Marlowe" value="Detective"></div>
       <button class="btn btn-primary" id="btn-generate" onclick="generateCase()">Open a New Case File →</button>
+      <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:8px;" onclick="showCaseHistory()">📂 Or Browse Past Case Files</button>
       <p style="font-size:11px;color:#7a6c47;margin-top:10px;">Connects to your DetectAI backend. Check the gear icon (top right) if it can't connect.</p>
     </div>
   </div>
@@ -325,6 +327,19 @@
   <div class="lb-wrap">
     <div class="section-head"><h2>Detective Leaderboard</h2></div>
     <table class="lb-table"><thead><tr><th>#</th><th>Detective</th><th>Case</th><th>Score</th><th>Verdict</th></tr></thead><tbody id="lb-body"></tbody></table>
+  </div>
+</div>
+<div id="screen-history" class="hidden">
+  <div class="lb-wrap" style="max-width:820px;">
+    <div class="section-head">
+      <h2>📁 Detective Case Archives</h2>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input type="text" id="hist-case-id-input" placeholder="Resume by Case ID..." style="background:var(--bg-panel-2);border:1px solid var(--border);color:var(--paper);padding:6px 10px;border-radius:var(--radius);font-size:12px;">
+        <button class="btn btn-sm btn-primary" onclick="lookupCaseById()">Load</button>
+      </div>
+    </div>
+    <div class="section-desc">Resume active investigations or review concluded case files.</div>
+    <div id="history-cases-list" style="display:flex;flex-direction:column;gap:12px;"></div>
   </div>
 </div>
 <div id="settings-modal" class="modal-overlay hidden">

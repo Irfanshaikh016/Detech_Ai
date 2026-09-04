@@ -21,6 +21,7 @@ const DIFFICULTIES = ['Easy','Medium','Hard'];
 
 function renderTopbarActions(){
   document.getElementById('topbar-actions').innerHTML = `
+    <button class="btn btn-ghost btn-sm" onclick="showCaseHistory()">📁 Case Files</button>
     <button class="btn btn-ghost btn-sm" onclick="showLeaderboard()">🏆 Leaderboard</button>
     <button class="icon-btn" onclick="openSettings()" title="Backend settings">⚙</button>
   `;
@@ -87,8 +88,9 @@ function saveSettings(){
 }
 
 function showScreen(id){
-  ['screen-setup','screen-briefing','screen-hub','screen-verdict','screen-leaderboard'].forEach(s=>{
-    document.getElementById(s).classList.toggle('hidden', s!==id);
+  ['screen-setup','screen-briefing','screen-hub','screen-verdict','screen-leaderboard','screen-history'].forEach(s=>{
+    const el = document.getElementById(s);
+    if(el) el.classList.toggle('hidden', s!==id);
   });
   window.scrollTo({top:0, behavior:'instant'});
 }
@@ -483,4 +485,117 @@ async function showLeaderboard(){
 
 function escapeHtml(str){
   return String(str ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+async function showCaseHistory(){
+  showScreen('screen-history');
+  const container = document.getElementById('history-cases-list');
+  container.innerHTML = `<div style="text-align:center;padding:30px;color:var(--muted);"><span class="spinner"></span> Accessing central archives…</div>`;
+  try{
+    const res = await api('/api/cases');
+    const cases = res.cases || [];
+    if(!cases.length){
+      container.innerHTML = `<div class="locked-note">No cases archived yet. Start a new investigation!</div>`;
+      return;
+    }
+    container.innerHTML = cases.map(c => {
+      let badgeClass = 'badge-amber';
+      let statusLabel = c.status || 'In Progress';
+      if(statusLabel === 'Solved') badgeClass = 'badge-green';
+      else if(statusLabel === 'Failed') badgeClass = 'badge-red';
+
+      return `
+      <div class="card" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+        <div>
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+            <span class="badge ${badgeClass}">${statusLabel}</span>
+            <span class="badge">${escapeHtml(c.crime_type)} · ${escapeHtml(c.difficulty)}</span>
+            <span style="font-family:'Courier Prime',monospace;font-size:11px;color:var(--muted);">${escapeHtml(c.case_id)}</span>
+          </div>
+          <h3 style="margin:0 0 4px;font-size:17px;">${escapeHtml(c.title)}</h3>
+          <div style="font-size:12px;color:var(--muted);">Victim: <b>${escapeHtml(c.victim_name)}</b> · ${c.log_count || 0} interrogation records</div>
+        </div>
+        <div>
+          <button class="btn btn-sm btn-primary" onclick="resumeCase('${c.case_id}')">
+            ${c.is_completed ? 'Review Verdict →' : 'Resume Investigation →'}
+          </button>
+        </div>
+      </div>`;
+    }).join('');
+  }catch(e){
+    container.innerHTML = `<div class="locked-note" style="color:var(--red-bright);">Failed to load case history. Check backend connection.</div>`;
+  }
+}
+
+function lookupCaseById(){
+  const input = document.getElementById('hist-case-id-input');
+  const id = input ? input.value.trim() : '';
+  if(!id){
+    toast('Please enter a Case ID to search.', true);
+    return;
+  }
+  resumeCase(id);
+}
+
+async function resumeCase(caseId){
+  try{
+    toast(`Loading case file ${caseId}…`);
+    const res = await api(`/api/cases/${caseId}`);
+    state.case = res.case;
+    state.caseId = caseId;
+    state.visitedLocations = new Set();
+    state.discoveredEvidence = new Set();
+    state.chatHistories = {};
+    state.hintsRevealed = [];
+    state.selectedEvidenceIds = new Set();
+    state.accusedSuspectId = null;
+
+    // Fetch all interrogation logs
+    try{
+      const logsRes = await api(`/api/cases/${caseId}/logs`);
+      if(logsRes.interrogations){
+        for(const [sId, logs] of Object.entries(logsRes.interrogations)){
+          state.chatHistories[sId] = normalizeHistory(logs);
+        }
+      }
+    }catch(e){}
+
+    // Check if verdict exists
+    let verdict = null;
+    try{
+      const vRes = await api(`/api/cases/${caseId}/verdict`);
+      verdict = vRes.verdict;
+    }catch(e){}
+
+    // If completed, show verdict
+    if(verdict){
+      (state.case.locations || []).forEach(l => state.visitedLocations.add(l.id));
+      (state.case.evidence || []).forEach(e => state.discoveredEvidence.add(e.id));
+      renderVerdict(verdict);
+      showScreen('screen-verdict');
+      toast(`Loaded completed case: ${state.case.title}`);
+    }else{
+      // Recover evidence mentioned in logs
+      const allEv = state.case.evidence || [];
+      for(const logs of Object.values(state.chatHistories)){
+        for(const entry of logs){
+          for(const ev of allEv){
+            if((entry.message || '').includes(ev.name)){
+              state.discoveredEvidence.add(ev.id);
+            }
+          }
+        }
+      }
+      // Recover visited locations
+      for(const loc of (state.case.locations || [])){
+        if((loc.evidence_ids || []).some(id => state.discoveredEvidence.has(id))){
+          state.visitedLocations.add(loc.id);
+        }
+      }
+      enterHub();
+      toast(`Resumed investigation: ${state.case.title}`);
+    }
+  }catch(err){
+    toast(`Could not load case ${caseId}: ${err.message}`, true);
+  }
 }
