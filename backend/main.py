@@ -7,13 +7,22 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+from contextlib import asynccontextmanager
 from database.db import init_db
 from routes.cases import router as cases_router
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("[DetectAI Backend] Initializing SQLite database...")
+    init_db()
+    print("[DetectAI Backend] Database initialized successfully.")
+    yield
 
 app = FastAPI(
     title="DetectAI - AI Crime Investigation Game API",
     description="FastAPI backend powering dynamic crime generation, suspect interrogation, prompt engineering, and AI Judge evaluation.",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Enable CORS for Streamlit / React frontend
@@ -28,11 +37,9 @@ app.add_middleware(
 # Register API router
 app.include_router(cases_router)
 
-@app.on_event("startup")
-def startup_event():
-    print("[DetectAI Backend] Initializing SQLite database...")
-    init_db()
-    print("[DetectAI Backend] Database initialized successfully.")
+@app.get("/api/health")
+def health():
+    return {"status": "ok"}
 
 @app.get("/")
 def root():

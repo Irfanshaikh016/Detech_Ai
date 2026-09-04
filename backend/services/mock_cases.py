@@ -139,6 +139,7 @@ def get_mock_case(difficulty: str, crime_type: str) -> Dict[str, Any]:
     case_copy = json_deepcopy(base)
     case_copy["id"] = f"case_{uuid.uuid4().hex[:8]}"
     case_copy["difficulty"] = "Easy" if difficulty not in MOCK_CASES else difficulty
+    case_copy["is_fallback"] = True
     if crime_type and crime_type != "Any":
         case_copy["crime_type"] = crime_type
     return case_copy

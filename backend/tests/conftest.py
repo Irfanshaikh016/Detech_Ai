@@ -23,11 +23,19 @@ from database.db import init_db
 @pytest.fixture(scope="session", autouse=True)
 def setup_database():
     if os.path.exists(TEST_DB):
-        os.remove(TEST_DB)
+        try:
+            os.remove(TEST_DB)
+        except OSError:
+            pass
     init_db()
     yield
+    import gc
+    gc.collect()
     if os.path.exists(TEST_DB):
-        os.remove(TEST_DB)
+        try:
+            os.remove(TEST_DB)
+        except OSError:
+            pass
 
 @pytest.fixture
 def client():

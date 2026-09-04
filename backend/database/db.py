@@ -89,7 +89,7 @@ def save_case(case_id, case_title, crime_type, difficulty, victim_name, case_dat
         cursor.execute("""
         INSERT OR REPLACE INTO cases (case_id, case_title, crime_type, difficulty, victim_name, case_data, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (case_id, case_title, crime_type, difficulty, victim_name, case_data_json, datetime.now()))
+        """, (case_id, case_title, crime_type, difficulty, victim_name, case_data_json, datetime.now().isoformat()))
         conn.commit()
     except Exception as e:
         print(f"Error saving case: {e}")
@@ -130,9 +130,9 @@ def get_interrogation_logs(case_id, suspect_id):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-    SELECT role, content, stress_level FROM interrogation_logs 
+    SELECT role, content, stress_level, timestamp FROM interrogation_logs 
     WHERE case_id = ? AND suspect_id = ?
-    ORDER BY timestamp ASC
+    ORDER BY id ASC
     """, (case_id, suspect_id))
     rows = cursor.fetchall()
     conn.close()
@@ -142,7 +142,9 @@ def get_interrogation_logs(case_id, suspect_id):
         history.append({
             "role": row[0],
             "content": row[1],
-            "stress_level": row[2]
+            "message": row[1],
+            "stress_level": row[2],
+            "timestamp": row[3] if len(row) > 3 else None
         })
     return history
 
@@ -175,19 +177,55 @@ def get_leaderboard(limit=10):
     """Get top scores from leaderboard"""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
-    SELECT player_name, score, difficulty FROM leaderboard 
-    ORDER BY score DESC
-    LIMIT ?
-    """, (limit,))
-    rows = cursor.fetchall()
-    conn.close()
-    
-    leaderboard = []
-    for row in rows:
-        leaderboard.append({
-            "player_name": row[0],
-            "score": row[1],
-            "difficulty": row[2]
-        })
-    return leaderboard
+    try:
+        cursor.execute("""
+        SELECT l.player_name, l.score, l.difficulty, l.case_id, c.case_title, v.is_correct, l.created_at
+        FROM leaderboard l
+        LEFT JOIN cases c ON l.case_id = c.case_id
+        LEFT JOIN verdicts v ON l.case_id = v.case_id AND l.player_name = v.player_name
+        ORDER BY l.score DESC, l.id DESC
+        LIMIT ?
+        """, (limit,))
+        rows = cursor.fetchall()
+        
+        leaderboard = []
+        for row in rows:
+            leaderboard.append({
+                "player_name": row[0],
+                "score": row[1],
+                "difficulty": row[2],
+                "case_id": row[3],
+                "case_title": row[4] or row[3] or "Mystery Case",
+                "is_correct": bool(row[5]) if row[5] is not None else True,
+                "timestamp": str(row[6]) if row[6] is not None else datetime.now().isoformat()
+            })
+        if leaderboard:
+            return leaderboard
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        cursor.execute("""
+        SELECT jv.player_name, jv.score, jv.is_correct, jv.difficulty, jv.timestamp, jv.case_id, c.title 
+        FROM judge_verdicts jv
+        LEFT JOIN cases c ON jv.case_id = c.id
+        ORDER BY jv.score DESC, jv.timestamp DESC, jv.id DESC
+        LIMIT ?
+        """, (limit,))
+        rows = cursor.fetchall()
+        return [
+            {
+                "player_name": r[0],
+                "score": r[1],
+                "is_correct": bool(r[2]),
+                "difficulty": r[3],
+                "timestamp": r[4],
+                "case_id": r[5],
+                "case_title": r[6] or r[5] or "Mystery Case"
+            }
+            for r in rows
+        ]
+    except Exception:
+        return []
+    finally:
+        conn.close()
