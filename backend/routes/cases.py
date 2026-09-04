@@ -11,16 +11,19 @@ class GenerateCaseRequest(BaseModel):
     difficulty: str = "Medium" # Easy, Medium, Hard
     crime_type: str = "Murder" # Murder, Theft, Kidnapping, Cybercrime, Fraud
     api_key: Optional[str] = None
+    grok_api_key: Optional[str] = None
 
 class InterrogateRequest(BaseModel):
     suspect_id: str
     question: str
     evidence_id: Optional[str] = None
     api_key: Optional[str] = None
+    grok_api_key: Optional[str] = None
 
 class HintRequest(BaseModel):
     hint_level: int = 1
     api_key: Optional[str] = None
+    grok_api_key: Optional[str] = None
 
 class JudgeRequest(BaseModel):
     accused_suspect_id: str
@@ -28,6 +31,7 @@ class JudgeRequest(BaseModel):
     evidence_ids: List[str]
     player_name: Optional[str] = "Detective"
     api_key: Optional[str] = None
+    grok_api_key: Optional[str] = None
     hints_used: Optional[int] = 0
 
 @router.get("/leaderboard")
@@ -47,7 +51,8 @@ def generate_case_endpoint(req: GenerateCaseRequest):
     case_data = gemini_service.generate_crime_case(
         difficulty=req.difficulty,
         crime_type=req.crime_type,
-        api_key=req.api_key or ""
+        api_key=req.api_key or "",
+        grok_api_key=req.grok_api_key or ""
     )
     
     if not case_data.get("id") or case_data["id"] == "generated_case_id":
@@ -64,10 +69,17 @@ def generate_case_endpoint(req: GenerateCaseRequest):
     
     # Strip ground truth before returning to frontend player (so they can't cheat)
     sanitized_case = dict(case_data)
-    # Keep ground_truth in backend, but remove from response
     sanitized_case.pop("ground_truth", None)
+    provider = case_data.get("provider", "offline")
+    sanitized_case["provider"] = provider
+    sanitized_case["is_fallback"] = case_data.get("is_fallback", provider == "offline")
     
-    return {"status": "success", "case_id": case_id, "case": sanitized_case}
+    return {
+        "status": "success",
+        "case_id": case_id,
+        "provider": provider,
+        "case": sanitized_case
+    }
 
 @router.get("/{case_id}")
 def get_case_endpoint(case_id: str):
@@ -126,7 +138,8 @@ def interrogate_endpoint(case_id: str, req: InterrogateRequest):
         history=history,
         question=req.question,
         evidence_presented=evidence_presented,
-        api_key=req.api_key or ""
+        api_key=req.api_key or "",
+        grok_api_key=req.grok_api_key or ""
     )
     
     # Save suspect response to SQLite log
@@ -157,7 +170,12 @@ def get_hint_endpoint(case_id: str, req: HintRequest):
     if not case_data:
         raise HTTPException(status_code=404, detail="Case not found.")
     
-    hint_text = gemini_service.generate_ai_hint(case_data, hint_level=req.hint_level, api_key=req.api_key or "")
+    hint_text = gemini_service.generate_ai_hint(
+        case_data,
+        hint_level=req.hint_level,
+        api_key=req.api_key or "",
+        grok_api_key=req.grok_api_key or ""
+    )
     return {"status": "success", "hint_level": req.hint_level, "hint": hint_text}
 
 @router.post("/{case_id}/judge")

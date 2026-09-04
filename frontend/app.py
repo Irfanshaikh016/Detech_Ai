@@ -321,6 +321,8 @@ if "verdict" not in st.session_state:
     st.session_state.verdict = None
 if "api_key" not in st.session_state:
     st.session_state.api_key = os.getenv("GEMINI_API_KEY", "")
+if "grok_api_key" not in st.session_state:
+    st.session_state.grok_api_key = os.getenv("GROK_API_KEY", "")
 if "start_time" not in st.session_state:
     st.session_state.start_time = None
 if "player_name" not in st.session_state:
@@ -447,15 +449,24 @@ with st.sidebar:
     st.session_state.sound_enabled = st.checkbox("🔊 Sound Effects", value=st.session_state.sound_enabled)
     
     st.markdown("---")
-    st.markdown("#### ⚙️ Gemini API Setup")
+    st.markdown("#### ⚙️ Dual AI Provider Setup")
     api_key_input = st.text_input(
-        "Gemini API Key",
+        "Gemini API Key (Primary)",
         value=st.session_state.api_key,
         type="password",
-        help="Paste your Gemini API key here or leave blank to use backend environment key."
+        help="Primary provider key. Leave blank to use server environment."
     )
     if api_key_input:
         st.session_state.api_key = api_key_input
+
+    grok_key_input = st.text_input(
+        "Grok API Key (Secondary Failover)",
+        value=st.session_state.grok_api_key,
+        type="password",
+        help="Secondary provider key (xAI Grok). Used automatically if Gemini fails."
+    )
+    if grok_key_input:
+        st.session_state.grok_api_key = grok_key_input
 
     st.markdown("---")
     st.markdown("#### 🎮 New Investigation")
@@ -482,7 +493,8 @@ with st.sidebar:
                     case_dict = gemini_service.generate_crime_case(
                         difficulty=difficulty,
                         crime_type=crime_type,
-                        api_key=st.session_state.api_key
+                        api_key=st.session_state.api_key,
+                        grok_api_key=st.session_state.grok_api_key
                     )
                     if not case_dict.get("id") or case_dict["id"] == "generated_case_id":
                         case_dict["id"] = f"case_{uuid.uuid4().hex[:8]}"
@@ -510,7 +522,8 @@ with st.sidebar:
                         json={
                             "difficulty": difficulty,
                             "crime_type": crime_type,
-                            "api_key": st.session_state.api_key
+                            "api_key": st.session_state.api_key,
+                            "grok_api_key": st.session_state.grok_api_key
                         },
                         timeout=40
                     )
@@ -704,8 +717,13 @@ else:
     st.caption(f"{b1}  ➔  {b2}  ➔  {b3}  ➔  {b4}  ➔  {b5}")
     st.progress(progress_val)
 
-    if case.get("is_fallback"):
-        st.info("⚡ **Offline Demo Mode**: Running pre-engineered forensic mystery scenario without external Gemini API key. Add an API Key in the sidebar for infinite procedurally-generated AI cases.")
+    provider = case.get("provider", "offline")
+    if provider == "gemini":
+        st.success("🟢 **AI Provider: Google Gemini Active** — Dynamically generated case.")
+    elif provider == "grok":
+        st.info("🟣 **AI Provider: xAI Grok Active** — Secondary failover case.")
+    elif case.get("is_fallback") or provider == "offline":
+        st.warning("⚡ **Offline Demo Mode**: Running pre-engineered forensic mystery scenario without external AI keys. Add an API Key in the sidebar for procedurally-generated AI cases.")
 
     # 2. DETECTIVE DASHBOARD (4 KPI CARDS)
     if progress_val < 0.4:
@@ -946,7 +964,8 @@ else:
                                     history=history,
                                     question=question_input.strip(),
                                     evidence_presented=evidence_presented,
-                                    api_key=st.session_state.api_key
+                                    api_key=st.session_state.api_key,
+                                    grok_api_key=st.session_state.grok_api_key
                                 )
                                 
                                 db.save_interrogation_log(
@@ -973,7 +992,8 @@ else:
                                     "suspect_id": selected_suspect_id,
                                     "question": question_input.strip(),
                                     "evidence_id": selected_ev_id,
-                                    "api_key": st.session_state.api_key
+                                    "api_key": st.session_state.api_key,
+                                    "grok_api_key": st.session_state.grok_api_key
                                 }
                                 res = requests.post(f"{BACKEND_URL}/api/cases/{case_id}/interrogate", json=payload, timeout=25)
                                 if res.status_code == 200:
@@ -1051,12 +1071,25 @@ else:
             hint_txt = None
             if USE_DIRECT_SERVICES:
                 try:
-                    hint_txt = gemini_service.generate_ai_hint(st.session_state.case_data, hint_level=hint_lvl, api_key=st.session_state.api_key)
+                    hint_txt = gemini_service.generate_ai_hint(
+                        st.session_state.case_data,
+                        hint_level=hint_lvl,
+                        api_key=st.session_state.api_key,
+                        grok_api_key=st.session_state.grok_api_key
+                    )
                 except Exception:
                     pass
             if not hint_txt:
                 try:
-                    h_res = requests.post(f"{BACKEND_URL}/api/cases/{case_id}/hint", json={"hint_level": hint_lvl, "api_key": st.session_state.api_key}, timeout=15)
+                    h_res = requests.post(
+                        f"{BACKEND_URL}/api/cases/{case_id}/hint",
+                        json={
+                            "hint_level": hint_lvl,
+                            "api_key": st.session_state.api_key,
+                            "grok_api_key": st.session_state.grok_api_key
+                        },
+                        timeout=15
+                    )
                     if h_res.status_code == 200:
                         hint_txt = h_res.json().get("hint")
                 except Exception:
@@ -1256,6 +1289,7 @@ DETECTIVE NOTES:
                                     "evidence_ids": selected_evidence_ids,
                                     "player_name": st.session_state.player_name,
                                     "api_key": st.session_state.api_key,
+                                    "grok_api_key": st.session_state.grok_api_key,
                                     "hints_used": st.session_state.used_hints
                                 }
                                 j_res = requests.post(f"{BACKEND_URL}/api/cases/{case_id}/judge", json=payload, timeout=25)

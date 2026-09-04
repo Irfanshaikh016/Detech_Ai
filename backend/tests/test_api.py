@@ -283,3 +283,209 @@ def test_scoring_edge_cases(client):
     assert v_wrong["score"] <= 35
     assert "DISMISSED" in v_wrong["judge_explanation"] or "innocent" in v_wrong["judge_explanation"]
 
+
+# ==============================================================================
+# Dual AI Provider (Gemini + Grok + Offline Fallback) Scenario Tests
+# ==============================================================================
+
+import json
+from unittest.mock import patch
+
+SAMPLE_AI_CASE = {
+    "id": "generated_case_id",
+    "title": "The Quantum Syndicate Incident",
+    "crime_type": "Cybercrime",
+    "difficulty": "Medium",
+    "summary": "A high-frequency trading firm was hacked.",
+    "victim": {"name": "Dr. Elena Vance", "occupation": "CTO", "background": "Quantum researcher"},
+    "ground_truth": {
+        "criminal_id": "suspect_1",
+        "criminal_name": "Marcus Kane",
+        "motive": "Stole decryption keys for black market sale",
+        "how_it_was_done": "Bypassed firewall using infected USB drive",
+        "smoking_gun_evidence": "ev_1"
+    },
+    "locations": [{"id": "loc_1", "name": "Server Room", "description": "Humming server racks", "image_type": "office", "evidence_ids": ["ev_1"]}],
+    "evidence": [
+        {"id": "ev_1", "name": "Infected USB", "category": "Emails", "location": "Server Room", "description": "USB found under desk", "relevance": "Contains malware", "importance": "Critical", "stars": 5},
+        {"id": "ev_2", "name": "Terminal Logs", "category": "Phone Call Logs", "location": "Server Room", "description": "SSH session at 2am", "relevance": "Points to Kane", "importance": "Medium", "stars": 3},
+        {"id": "ev_3", "name": "Keycard Badge", "category": "Witness Statements", "location": "Server Room", "description": "Entry log badge", "relevance": "Badge used by Kane", "importance": "High", "stars": 4}
+    ],
+    "suspects": [
+        {"id": "suspect_1", "name": "Marcus Kane", "occupation": "Sysadmin", "relationship": "Colleague", "personality": "Quiet", "alibi": "Was at home sleeping", "secret": "In debt", "motive": "Money", "stress_level": "Calm", "suspicion_score": 60},
+        {"id": "suspect_2", "name": "Sarah Connor", "occupation": "Security Guard", "relationship": "Contractor", "personality": "Vigilant", "alibi": "Patrolling perimeter", "secret": "Missed shift", "motive": "None", "stress_level": "Calm", "suspicion_score": 20},
+        {"id": "suspect_3", "name": "Victor Stone", "occupation": "DevOps Lead", "relationship": "Peer", "personality": "Arrogant", "alibi": "Code review", "secret": "Side gig", "motive": "Ego", "stress_level": "Calm", "suspicion_score": 30}
+    ],
+    "hints": ["Check the physical server logs", "Look at USB timestamps", "Kane's badge was scanned"]
+}
+
+def test_dual_provider_both_keys_valid_gemini_chosen(client):
+    """1. Both keys valid -> Gemini response chosen."""
+    with patch("backend.services.gemini_service.call_gemini_api") as mock_gemini, \
+         patch("backend.services.gemini_service.call_grok_api") as mock_grok:
+        mock_gemini.return_value = json.dumps(SAMPLE_AI_CASE)
+        res = client.post("/api/cases/generate", json={
+            "difficulty": "Medium",
+            "crime_type": "Cybercrime",
+            "api_key": "valid-gemini-key-12345",
+            "grok_api_key": "valid-grok-key-12345"
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "success"
+        assert data["provider"] == "gemini"
+        assert data["case"]["provider"] == "gemini"
+        assert data["case"]["is_fallback"] is False
+        mock_gemini.assert_called_once()
+        mock_grok.assert_not_called()
+
+def test_dual_provider_gemini_invalid_grok_response(client):
+    """2. Gemini key invalid / HTTP failure -> Grok response."""
+    with patch("backend.services.gemini_service.call_gemini_api") as mock_gemini, \
+         patch("backend.services.gemini_service.call_grok_api") as mock_grok:
+        mock_gemini.side_effect = Exception("Gemini API returned status 401")
+        mock_grok.return_value = json.dumps(SAMPLE_AI_CASE)
+        res = client.post("/api/cases/generate", json={
+            "difficulty": "Medium",
+            "crime_type": "Cybercrime",
+            "api_key": "invalid-gemini-key",
+            "grok_api_key": "valid-grok-key-12345"
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "success"
+        assert data["provider"] == "grok"
+        assert data["case"]["provider"] == "grok"
+        assert data["case"]["is_fallback"] is False
+        mock_gemini.assert_called_once()
+        mock_grok.assert_called_once()
+
+def test_dual_provider_both_unavailable_offline_response(client):
+    """3. Gemini unavailable and Grok unavailable -> offline response."""
+    with patch("backend.services.gemini_service.call_gemini_api") as mock_gemini, \
+         patch("backend.services.gemini_service.call_grok_api") as mock_grok:
+        mock_gemini.side_effect = Exception("Gemini 500 server error")
+        mock_grok.side_effect = Exception("Grok 503 service unavailable")
+        res = client.post("/api/cases/generate", json={
+            "difficulty": "Medium",
+            "crime_type": "Murder",
+            "api_key": "mock-gemini-key",
+            "grok_api_key": "mock-grok-key"
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "success"
+        assert data["provider"] == "offline"
+        assert data["case"]["provider"] == "offline"
+        assert data["case"]["is_fallback"] is True
+
+def test_dual_provider_only_gemini_configured(client):
+    """4. Only Gemini key configured -> Gemini works."""
+    with patch.dict("os.environ", {"GEMINI_API_KEY": "", "GROK_API_KEY": ""}), \
+         patch("backend.services.gemini_service.call_gemini_api") as mock_gemini, \
+         patch("backend.services.gemini_service.call_grok_api") as mock_grok:
+        mock_gemini.return_value = json.dumps(SAMPLE_AI_CASE)
+        res = client.post("/api/cases/generate", json={
+            "difficulty": "Medium",
+            "crime_type": "Cybercrime",
+            "api_key": "only-gemini-key-12345"
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["provider"] == "gemini"
+        mock_gemini.assert_called_once()
+        mock_grok.assert_not_called()
+
+def test_dual_provider_only_grok_configured(client):
+    """5. Only Grok key configured -> Grok works."""
+    with patch.dict("os.environ", {"GEMINI_API_KEY": "", "GROK_API_KEY": ""}), \
+         patch("backend.services.gemini_service.call_gemini_api") as mock_gemini, \
+         patch("backend.services.gemini_service.call_grok_api") as mock_grok:
+        mock_grok.return_value = json.dumps(SAMPLE_AI_CASE)
+        res = client.post("/api/cases/generate", json={
+            "difficulty": "Medium",
+            "crime_type": "Cybercrime",
+            "grok_api_key": "only-grok-key-12345"
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["provider"] == "grok"
+        mock_gemini.assert_not_called()
+        mock_grok.assert_called_once()
+
+def test_dual_provider_no_keys_configured_offline(client):
+    """6. No keys configured -> offline response."""
+    with patch.dict("os.environ", {"GEMINI_API_KEY": "", "GROK_API_KEY": ""}):
+        res = client.post("/api/cases/generate", json={
+            "difficulty": "Easy",
+            "crime_type": "Theft"
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["provider"] == "offline"
+        assert data["case"]["provider"] == "offline"
+        assert data["case"]["is_fallback"] is True
+        assert data["case"]["difficulty"] == "Easy"
+
+def test_difficulty_medium_preserved(client):
+    """7. Medium difficulty -> Medium case."""
+    with patch.dict("os.environ", {"GEMINI_API_KEY": "", "GROK_API_KEY": ""}):
+        res = client.post("/api/cases/generate", json={
+            "difficulty": "Medium",
+            "crime_type": "Theft"
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["case"]["difficulty"] == "Medium"
+
+def test_difficulty_hard_preserved(client):
+    """8. Hard difficulty -> Hard case."""
+    with patch.dict("os.environ", {"GEMINI_API_KEY": "", "GROK_API_KEY": ""}):
+        res = client.post("/api/cases/generate", json={
+            "difficulty": "Hard",
+            "crime_type": "Murder"
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["case"]["difficulty"] == "Hard"
+
+def test_invalid_ai_json_triggers_fallback(client):
+    """9. Invalid AI JSON -> next provider or offline fallback works."""
+    with patch("backend.services.gemini_service.call_gemini_api") as mock_gemini, \
+         patch("backend.services.gemini_service.call_grok_api") as mock_grok:
+        mock_gemini.return_value = "This is definitely not valid JSON from Gemini!"
+        mock_grok.return_value = "```json\n{malformed json from Grok: missing quotes\n```"
+        res = client.post("/api/cases/generate", json={
+            "difficulty": "Medium",
+            "crime_type": "Fraud",
+            "api_key": "gemini-key",
+            "grok_api_key": "grok-key"
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "success"
+        assert data["provider"] == "offline"
+        assert data["case"]["is_fallback"] is True
+        assert data["case"]["difficulty"] == "Medium"
+
+def test_api_timeout_triggers_next_provider(client):
+    """10. API timeout -> next provider is attempted."""
+    import httpx
+    with patch("backend.services.gemini_service.call_gemini_api") as mock_gemini, \
+         patch("backend.services.gemini_service.call_grok_api") as mock_grok:
+        mock_gemini.side_effect = httpx.ReadTimeout("Gemini connection timed out")
+        mock_grok.return_value = json.dumps(SAMPLE_AI_CASE)
+        res = client.post("/api/cases/generate", json={
+            "difficulty": "Medium",
+            "crime_type": "Cybercrime",
+            "api_key": "timeout-gemini-key",
+            "grok_api_key": "grok-backup-key"
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["provider"] == "grok"
+        assert data["case"]["is_fallback"] is False
+        mock_gemini.assert_called_once()
+        mock_grok.assert_called_once()
+
+

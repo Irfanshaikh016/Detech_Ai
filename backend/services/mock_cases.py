@@ -463,21 +463,22 @@ def get_mock_case(difficulty: str = "Easy", crime_type: str = "Theft") -> Dict[s
     - Medium: The Midnight Cyanide Protocol (Murder)
     - Hard: The Apex Grid Ransomware Blackout (Cybercrime)
     """
-    selected_key = "Easy"
-    if crime_type == "Murder" or difficulty == "Medium":
+    diff_key = (difficulty or "Easy").capitalize()
+    if diff_key in MOCK_CASES:
+        selected_key = diff_key
+    elif crime_type == "Murder":
         selected_key = "Medium"
-    elif crime_type in ["Cybercrime", "Fraud"] or difficulty == "Hard":
+    elif crime_type in ["Cybercrime", "Fraud"]:
         selected_key = "Hard"
-    elif crime_type in ["Theft", "Kidnapping"] or difficulty == "Easy":
+    else:
         selected_key = "Easy"
-
-    if difficulty in MOCK_CASES and (not crime_type or crime_type in ["Any", "All"]):
-        selected_key = difficulty
 
     base = MOCK_CASES.get(selected_key, MOCK_CASES["Easy"])
     case_copy = json_deepcopy(base)
     case_copy["id"] = f"case_{uuid.uuid4().hex[:8]}"
+    case_copy["difficulty"] = selected_key
     case_copy["is_fallback"] = True
+    case_copy["provider"] = "offline"
     return case_copy
 
 def json_deepcopy(d):

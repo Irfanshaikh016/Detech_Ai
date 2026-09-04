@@ -7,33 +7,57 @@ from backend.services.mock_cases import get_mock_case
 
 logger = logging.getLogger(__name__)
 
-# gemini-1.5-flash was fully retired by Google (requests now 404). Default to a
-# currently-serving model, but keep it overridable via env var so a future
-# deprecation doesn't require another code change.
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+# Primary & Secondary AI Provider Models
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+GROK_MODEL = os.getenv("GROK_MODEL", "grok-4.6")
 
-def get_api_key(override_key: Optional[str] = None) -> str:
+PLACEHOLDER_KEYS = {"", "your_gemini_api_key_here", "your_grok_api_key_here", "none", "null", "undefined"}
+
+def get_gemini_api_key(override_key: Optional[str] = None) -> str:
     if override_key and len(override_key.strip()) > 5:
-        return override_key.strip()
-    env_key = os.getenv("GEMINI_API_KEY", "")
-    return env_key.strip()
+        key = override_key.strip()
+        if key.lower() not in PLACEHOLDER_KEYS:
+            return key
+    env_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if env_key.lower() in PLACEHOLDER_KEYS:
+        return ""
+    return env_key
+
+def get_grok_api_key(override_key: Optional[str] = None) -> str:
+    if override_key and len(override_key.strip()) > 5:
+        key = override_key.strip()
+        if key.lower() not in PLACEHOLDER_KEYS:
+            return key
+    env_key = os.getenv("GROK_API_KEY", "").strip()
+    if env_key.lower() in PLACEHOLDER_KEYS:
+        return ""
+    return env_key
+
+# Backward-compatible alias
+get_api_key = get_gemini_api_key
 
 def _strip_json_fences(raw: str) -> str:
-    """Strip markdown code fences Gemini sometimes wraps JSON in, robustly."""
+    """Strip markdown code fences Gemini or Grok sometimes wrap JSON in, robustly."""
     text = raw.strip()
     if text.startswith("```"):
-        # Drop the opening fence line (``` or ```json)
         first_newline = text.find("\n")
         text = text[first_newline + 1:] if first_newline != -1 else text[3:]
     if text.endswith("```"):
         text = text[: -3]
     return text.strip()
 
-def call_gemini_api(prompt: str, system_instruction: str = "", api_key: str = "", response_json: bool = False, max_output_tokens: int = 2048) -> str:
-    """Call Gemini REST API directly for maximum reliability and zero dependency issues."""
-    key = get_api_key(api_key)
+def call_gemini_api(
+    prompt: str,
+    system_instruction: str = "",
+    api_key: str = "",
+    response_json: bool = False,
+    max_output_tokens: int = 8192,
+    timeout: float = 30.0
+) -> str:
+    """Call Gemini REST API directly with configurable timeout and error handling."""
+    key = get_gemini_api_key(api_key)
     if not key:
-        raise ValueError("No Gemini API key provided!")
+        raise ValueError("No Gemini API key provided")
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={key}"
     
@@ -62,39 +86,139 @@ def call_gemini_api(prompt: str, system_instruction: str = "", api_key: str = ""
 
     headers = {"Content-Type": "application/json"}
 
-    with httpx.Client(timeout=45.0) as client:
+    with httpx.Client(timeout=timeout) as client:
         res = client.post(url, json=payload, headers=headers)
-        if res.status_code == 404:
-            logger.error(f"Gemini API 404 for model '{GEMINI_MODEL}' — it may have been retired. Check https://ai.google.dev/gemini-api/docs/deprecations")
-            raise Exception(f"Gemini model '{GEMINI_MODEL}' returned 404 (likely retired/unavailable).")
         if res.status_code != 200:
-            logger.error(f"Gemini API Error ({res.status_code}): {res.text}")
-            raise Exception(f"Gemini API returned status {res.status_code}: {res.text[:200]}")
+            logger.warning(f"Gemini API returned status {res.status_code}")
+            raise Exception(f"Gemini API returned status {res.status_code}")
         
         data = res.json()
         try:
-            text = data["candidates"][0]["content"]["parts"][0]["text"]
-            return text
-        except (KeyError, IndexError) as e:
-            logger.error(f"Unexpected response structure: {data}")
+            return data["candidates"][0]["content"]["parts"][0]["text"]
+        except (KeyError, IndexError):
+            logger.warning("Unexpected response structure from Gemini API")
             raise Exception("Failed to parse response from Gemini API.")
 
-def generate_crime_case(difficulty: str = "Medium", crime_type: str = "Murder", api_key: str = "") -> Dict[str, Any]:
-    """Generates a complete dynamic crime scenario using Gemini API with structured JSON output."""
-    try:
-        suspect_count = 3 if difficulty == "Easy" else (5 if difficulty == "Medium" else 8)
-        clue_count = 5 if difficulty == "Easy" else (10 if difficulty == "Medium" else 15)
+def call_grok_api(
+    prompt: str,
+    system_instruction: str = "",
+    api_key: str = "",
+    response_json: bool = False,
+    max_tokens: int = 8192,
+    timeout: float = 30.0
+) -> str:
+    """Call Grok API via OpenAI-compatible endpoint with configurable timeout."""
+    key = get_grok_api_key(api_key)
+    if not key:
+        raise ValueError("No Grok API key provided")
 
-        system_instruction = (
-            "You are an expert game master and criminal mystery novelist. "
-            "You generate highly detailed, realistic, logical detective game cases with consistent clues, motives, importance ratings, and suspect suspicion scores. "
-            "Return ONLY raw JSON conforming strictly to the requested schema."
-        )
+    from openai import OpenAI
+    client = OpenAI(
+        api_key=key,
+        base_url="https://api.x.ai/v1",
+        timeout=timeout
+    )
 
-        prompt = f"""
+    messages = []
+    if system_instruction:
+        messages.append({"role": "system", "content": system_instruction})
+    messages.append({"role": "user", "content": prompt})
+
+    kwargs: Dict[str, Any] = {
+        "model": GROK_MODEL,
+        "messages": messages,
+        "temperature": 0.7,
+        "max_tokens": max_tokens,
+    }
+    if response_json:
+        kwargs["response_format"] = {"type": "json_object"}
+
+    completion = client.chat.completions.create(**kwargs)
+    choice = completion.choices[0]
+    return choice.message.content or ""
+
+def _validate_and_normalize_case(
+    case_data: Any,
+    difficulty: str,
+    crime_type: str,
+    provider: str
+) -> Optional[Dict[str, Any]]:
+    """Validate JSON case schema and ensure consistent fields and metadata."""
+    if not isinstance(case_data, dict):
+        return None
+
+    required_keys = ["title", "suspects", "evidence", "locations", "ground_truth"]
+    for k in required_keys:
+        if k not in case_data:
+            logger.warning(f"{provider} generated case missing required key '{k}'")
+            return None
+
+    if not isinstance(case_data.get("suspects"), list) or len(case_data["suspects"]) < 3:
+        logger.warning(f"{provider} case has insufficient suspects")
+        return None
+
+    if not isinstance(case_data.get("evidence"), list) or len(case_data["evidence"]) < 3:
+        logger.warning(f"{provider} case has insufficient evidence clues")
+        return None
+
+    if not isinstance(case_data.get("locations"), list) or len(case_data["locations"]) < 1:
+        logger.warning(f"{provider} case has insufficient locations")
+        return None
+
+    gt = case_data.get("ground_truth")
+    if not isinstance(gt, dict) or not (gt.get("criminal_id") or gt.get("criminal_name")):
+        logger.warning(f"{provider} case has invalid ground_truth")
+        return None
+
+    # Preserve requested difficulty and crime type
+    case_data["difficulty"] = difficulty
+    case_data["crime_type"] = crime_type
+
+    # Normalize evidence defaults
+    for e in case_data["evidence"]:
+        if isinstance(e, dict):
+            if "importance" not in e:
+                e["importance"] = "Medium"
+            if "stars" not in e:
+                e["stars"] = 3
+
+    # Normalize suspects defaults
+    for s in case_data["suspects"]:
+        if isinstance(s, dict):
+            if "suspicion_score" not in s:
+                s["suspicion_score"] = 35
+            if "stress_level" not in s:
+                s["stress_level"] = "Calm"
+
+    case_data["provider"] = provider
+    case_data["is_fallback"] = (provider == "offline")
+    return case_data
+
+def generate_crime_case(
+    difficulty: str = "Medium",
+    crime_type: str = "Murder",
+    api_key: str = "",
+    grok_api_key: str = ""
+) -> Dict[str, Any]:
+    """Generates a complete crime scenario with 3-tier fallback: Gemini -> Grok -> Offline mock."""
+    diff = (difficulty or "Medium").capitalize()
+    if diff not in ["Easy", "Medium", "Hard"]:
+        diff = "Medium"
+    ctype = (crime_type or "Murder").capitalize()
+
+    suspect_count = 3 if diff == "Easy" else (5 if diff == "Medium" else 8)
+    clue_count = 5 if diff == "Easy" else (10 if diff == "Medium" else 15)
+
+    system_instruction = (
+        "You are an expert game master and criminal mystery novelist. "
+        "You generate highly detailed, realistic, logical detective game cases with consistent clues, motives, importance ratings, and suspect suspicion scores. "
+        "Return ONLY raw JSON conforming strictly to the requested schema."
+    )
+
+    prompt = f"""
 Generate a complex, immersive crime investigation case for a game.
-Difficulty Level: {difficulty}
-Crime Type: {crime_type}
+Difficulty Level: {diff}
+Crime Type: {ctype}
 Number of Suspects: {suspect_count}
 Number of Evidence Clues: {clue_count}
 
@@ -102,8 +226,8 @@ Output a single valid JSON object with the following exact keys:
 {{
   "id": "generated_case_id",
   "title": "A Catchy Mystery Title",
-  "crime_type": "{crime_type}",
-  "difficulty": "{difficulty}",
+  "crime_type": "{ctype}",
+  "difficulty": "{diff}",
   "summary": "Full overview of the crime committed, scene description, and time of occurrence.",
   "victim": {{
     "name": "Full Name",
@@ -159,25 +283,47 @@ Output a single valid JSON object with the following exact keys:
   ]
 }}
 """
-        # Hard difficulty asks for up to 8 suspects + 15 clues, which needs more
-        # room than the old 2048-token default (was silently truncating JSON).
-        raw_json = call_gemini_api(prompt, system_instruction=system_instruction, api_key=api_key, response_json=True, max_output_tokens=8192)
-        case_data = json.loads(_strip_json_fences(raw_json))
-        
-        # Ensure default values for importance & suspicion
-        for e in case_data.get("evidence", []):
-            if "importance" not in e:
-                e["importance"] = "Medium"
-            if "stars" not in e:
-                e["stars"] = 3
-        for s in case_data.get("suspects", []):
-            if "suspicion_score" not in s:
-                s["suspicion_score"] = 35
 
-        return case_data
-    except Exception as e:
-        logger.warning(f"Gemini API generation failed ({e}), falling back to mock case generator (fixed 'Easy' story, not '{difficulty}').")
-        return get_mock_case(difficulty, crime_type)
+    # --- Level 1: Primary Provider (Gemini) ---
+    gemini_key = get_gemini_api_key(api_key)
+    if gemini_key:
+        try:
+            logger.info(f"Attempting case generation with Gemini ({GEMINI_MODEL}, difficulty={diff})...")
+            raw_json = call_gemini_api(prompt, system_instruction=system_instruction, api_key=gemini_key, response_json=True, max_output_tokens=8192, timeout=30.0)
+            parsed = json.loads(_strip_json_fences(raw_json))
+            validated = _validate_and_normalize_case(parsed, difficulty=diff, crime_type=ctype, provider="gemini")
+            if validated:
+                logger.info("Successfully generated case with Gemini.")
+                return validated
+            logger.warning("Gemini response was invalid or malformed JSON schema. Attempting Grok fallback...")
+        except Exception as e:
+            logger.warning(f"Gemini generation failed ({e.__class__.__name__}). Attempting Grok fallback...")
+    else:
+        logger.info("Gemini API key not configured or missing. Skipping Gemini provider.")
+
+    # --- Level 2: Secondary Provider (Grok) ---
+    grok_key = get_grok_api_key(grok_api_key)
+    if grok_key:
+        try:
+            logger.info(f"Attempting case generation with Grok ({GROK_MODEL}, difficulty={diff})...")
+            raw_json = call_grok_api(prompt, system_instruction=system_instruction, api_key=grok_key, response_json=True, max_tokens=8192, timeout=30.0)
+            parsed = json.loads(_strip_json_fences(raw_json))
+            validated = _validate_and_normalize_case(parsed, difficulty=diff, crime_type=ctype, provider="grok")
+            if validated:
+                logger.info("Successfully generated case with Grok.")
+                return validated
+            logger.warning("Grok response was invalid or malformed JSON schema. Attempting offline fallback...")
+        except Exception as e:
+            logger.warning(f"Grok generation failed ({e.__class__.__name__}). Attempting offline fallback...")
+    else:
+        logger.info("Grok API key not configured or missing. Skipping Grok provider.")
+
+    # --- Level 3: Deterministic Offline Mock Fallback ---
+    logger.info(f"Using offline case fallback for difficulty={diff}, crime_type={ctype}.")
+    offline_case = get_mock_case(difficulty=diff, crime_type=ctype)
+    offline_case["provider"] = "offline"
+    offline_case["is_fallback"] = True
+    return offline_case
 
 def interrogate_suspect(
     case_data: Dict[str, Any],
@@ -185,7 +331,8 @@ def interrogate_suspect(
     history: List[Dict[str, Any]],
     question: str,
     evidence_presented: Optional[Dict[str, Any]] = None,
-    api_key: str = ""
+    api_key: str = "",
+    grok_api_key: str = ""
 ) -> Dict[str, Any]:
     """Roleplay as suspect during interrogation using prompt engineering and memory."""
     suspect = next((s for s in case_data.get("suspects", []) if s["id"] == suspect_id), None)
@@ -237,8 +384,25 @@ Detective's Question: "{question}"
 Respond in character as {suspect['name']}:
 """
 
-    try:
-        raw_response = call_gemini_api(prompt, system_instruction=system_prompt, api_key=api_key)
+    raw_response = None
+    # 1. Try Gemini
+    gemini_key = get_gemini_api_key(api_key)
+    if gemini_key:
+        try:
+            raw_response = call_gemini_api(prompt, system_instruction=system_prompt, api_key=gemini_key, timeout=20.0)
+        except Exception as e:
+            logger.warning(f"Gemini interrogation failed: {e}")
+
+    # 2. Try Grok
+    if not raw_response:
+        grok_key = get_grok_api_key(grok_api_key)
+        if grok_key:
+            try:
+                raw_response = call_grok_api(prompt, system_instruction=system_prompt, api_key=grok_key, timeout=20.0)
+            except Exception as e:
+                logger.warning(f"Grok interrogation failed: {e}")
+
+    if raw_response:
         stress = suspect.get("stress_level", "Calm")
         suspicion_change = 0
         clean_text = raw_response.strip()
@@ -259,19 +423,18 @@ Respond in character as {suspect['name']}:
                 stress = stress_info.strip()
 
         return {"response": clean_text, "stress_level": stress, "suspicion_change": suspicion_change}
-    except Exception as e:
-        logger.warning(f"Gemini interrogation failed: {e}")
-        if is_guilty and evidence_presented:
-            return {"response": f"Wait! That... that's impossible. Where did you get that {evidence_presented.get('name')}?!", "stress_level": "Nervous", "suspicion_change": 15}
-        return {"response": f"I've already told you what I know. My alibi stands: {suspect['alibi']}.", "stress_level": "Defensive", "suspicion_change": 5}
 
-def generate_ai_hint(case_data: Dict[str, Any], hint_level: int = 1, api_key: str = "") -> str:
+    # 3. Deterministic offline fallback
+    if is_guilty and evidence_presented:
+        return {"response": f"Wait! That... that's impossible. Where did you get that {evidence_presented.get('name')}?!", "stress_level": "Nervous", "suspicion_change": 15}
+    return {"response": f"I've already told you what I know. My alibi stands: {suspect['alibi']}.", "stress_level": "Defensive", "suspicion_change": 5}
+
+def generate_ai_hint(case_data: Dict[str, Any], hint_level: int = 1, api_key: str = "", grok_api_key: str = "") -> str:
     hints = case_data.get("hints", [])
     if len(hints) >= hint_level:
         return hints[hint_level - 1]
     
-    try:
-        prompt = f"""
+    prompt = f"""
 Generate Hint Level {hint_level} (out of 3) for this mystery:
 Crime: {case_data.get('title')}
 Summary: {case_data.get('summary')}
@@ -280,9 +443,21 @@ Smoking Gun: {case_data.get('ground_truth', {}).get('smoking_gun_evidence')}
 
 Output ONLY the hint text.
 """
-        return call_gemini_api(prompt, api_key=api_key).strip()
-    except Exception:
-        return f"Hint Level {hint_level}: Examine the evidence collected from the locations carefully and compare timeline statements."
+    gemini_key = get_gemini_api_key(api_key)
+    if gemini_key:
+        try:
+            return call_gemini_api(prompt, api_key=gemini_key, timeout=15.0).strip()
+        except Exception:
+            pass
+
+    grok_key = get_grok_api_key(grok_api_key)
+    if grok_key:
+        try:
+            return call_grok_api(prompt, api_key=grok_key, timeout=15.0).strip()
+        except Exception:
+            pass
+
+    return f"Hint Level {hint_level}: Examine the evidence collected from the locations carefully and compare timeline statements."
 
 def evaluate_accusation(
     case_data: Dict[str, Any],
