@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import logging
 import httpx
 from typing import Dict, Any, List, Optional
@@ -46,15 +47,19 @@ def _strip_json_fences(raw: str) -> str:
         text = text[: -3]
     return text.strip()
 
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+
 def call_gemini_api(
     prompt: str,
     system_instruction: str = "",
     api_key: str = "",
     response_json: bool = False,
     max_output_tokens: int = 8192,
-    timeout: float = 30.0
+    timeout: float = 30.0,
+    max_retries: int = 2,
+    retry_delay: float = 1.0
 ) -> str:
-    """Call Gemini REST API directly with configurable timeout and error handling."""
+    """Call Gemini REST API directly with bounded retries for transient failures (503, 429, 5xx)."""
     key = get_gemini_api_key(api_key)
     if not key:
         raise ValueError("No Gemini API key provided")
@@ -86,18 +91,61 @@ def call_gemini_api(
 
     headers = {"Content-Type": "application/json"}
 
-    with httpx.Client(timeout=timeout) as client:
-        res = client.post(url, json=payload, headers=headers)
-        if res.status_code != 200:
-            logger.warning(f"Gemini API returned status {res.status_code}")
-            raise Exception(f"Gemini API returned status {res.status_code}")
-        
-        data = res.json()
+    attempt = 0
+    current_delay = retry_delay
+    total_attempts = max_retries + 1
+
+    while attempt < total_attempts:
+        attempt += 1
+        logger.info(f"Gemini request started")
         try:
-            return data["candidates"][0]["content"]["parts"][0]["text"]
-        except (KeyError, IndexError):
-            logger.warning("Unexpected response structure from Gemini API")
-            raise Exception("Failed to parse response from Gemini API.")
+            with httpx.Client(timeout=timeout) as client:
+                res = client.post(url, json=payload, headers=headers)
+                
+                if res.status_code == 200:
+                    try:
+                        data = res.json()
+                        candidates = data.get("candidates", [])
+                        if not candidates:
+                            raise ValueError("No candidates in Gemini API response")
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        if not parts:
+                            raise ValueError("No content parts in Gemini API response")
+                        text = parts[0].get("text", "")
+                        if not text or not str(text).strip():
+                            raise ValueError("Empty text in Gemini API response")
+                        return str(text).strip()
+                    except (ValueError, KeyError, IndexError) as parse_err:
+                        logger.warning(f"Unexpected response structure or empty content from Gemini API: {parse_err}")
+                        raise Exception("Failed to parse response from Gemini API.")
+
+                if res.status_code in RETRYABLE_STATUS_CODES:
+                    logger.warning(f"Gemini returned temporary status {res.status_code}")
+                    if attempt < total_attempts:
+                        logger.warning(f"Gemini retry {attempt}/{max_retries}")
+                        time.sleep(current_delay)
+                        current_delay *= 2.0
+                        continue
+                    else:
+                        logger.warning("Gemini retries exhausted")
+                        raise Exception(f"Gemini API returned status {res.status_code}")
+                else:
+                    logger.warning(f"Gemini API returned non-retryable status {res.status_code}")
+                    raise Exception(f"Gemini API returned status {res.status_code}")
+
+        except httpx.RequestError as req_err:
+            logger.warning(f"Gemini request network error: {req_err.__class__.__name__}")
+            if attempt < total_attempts:
+                logger.warning(f"Gemini retry {attempt}/{max_retries}")
+                time.sleep(current_delay)
+                current_delay *= 2.0
+                continue
+            else:
+                logger.warning("Gemini retries exhausted")
+                raise Exception(f"Gemini request failed after {total_attempts} attempts: {req_err.__class__.__name__}")
+
+    logger.warning("Gemini retries exhausted")
+    raise Exception("Gemini request retries exhausted")
 
 def call_grok_api(
     prompt: str,
@@ -107,7 +155,7 @@ def call_grok_api(
     max_tokens: int = 8192,
     timeout: float = 30.0
 ) -> str:
-    """Call Grok API via OpenAI-compatible endpoint with configurable timeout."""
+    """Call Grok API via OpenAI-compatible endpoint with configurable timeout and response validation."""
     key = get_grok_api_key(api_key)
     if not key:
         raise ValueError("No Grok API key provided")
@@ -133,9 +181,18 @@ def call_grok_api(
     if response_json:
         kwargs["response_format"] = {"type": "json_object"}
 
+    logger.info(f"Calling Grok API (model={GROK_MODEL}, timeout={timeout}s)...")
     completion = client.chat.completions.create(**kwargs)
+    if not completion or not getattr(completion, "choices", None) or len(completion.choices) == 0:
+        logger.warning("Grok API returned empty completion choices")
+        raise ValueError("Grok API returned empty completion choices")
+
     choice = completion.choices[0]
-    return choice.message.content or ""
+    content = getattr(choice.message, "content", None)
+    if not content or not str(content).strip():
+        logger.warning("Grok API returned empty message content")
+        raise ValueError("Grok API returned empty message content")
+    return str(content).strip()
 
 def _validate_and_normalize_case(
     case_data: Any,
@@ -290,14 +347,16 @@ Output a single valid JSON object with the following exact keys:
         try:
             logger.info(f"Attempting case generation with Gemini ({GEMINI_MODEL}, difficulty={diff})...")
             raw_json = call_gemini_api(prompt, system_instruction=system_instruction, api_key=gemini_key, response_json=True, max_output_tokens=8192, timeout=30.0)
+            if not raw_json or not raw_json.strip():
+                raise ValueError("Empty response text from Gemini API")
             parsed = json.loads(_strip_json_fences(raw_json))
             validated = _validate_and_normalize_case(parsed, difficulty=diff, crime_type=ctype, provider="gemini")
             if validated:
-                logger.info("Successfully generated case with Gemini.")
+                logger.info("Gemini generation succeeded")
                 return validated
             logger.warning("Gemini response was invalid or malformed JSON schema. Attempting Grok fallback...")
         except Exception as e:
-            logger.warning(f"Gemini generation failed ({e.__class__.__name__}). Attempting Grok fallback...")
+            logger.warning(f"Gemini generation failed ({e.__class__.__name__}: {e}). Attempting Grok fallback...")
     else:
         logger.info("Gemini API key not configured or missing. Skipping Gemini provider.")
 
@@ -305,21 +364,23 @@ Output a single valid JSON object with the following exact keys:
     grok_key = get_grok_api_key(grok_api_key)
     if grok_key:
         try:
-            logger.info(f"Attempting case generation with Grok ({GROK_MODEL}, difficulty={diff})...")
+            logger.info("Attempting Grok fallback")
             raw_json = call_grok_api(prompt, system_instruction=system_instruction, api_key=grok_key, response_json=True, max_tokens=8192, timeout=30.0)
+            if not raw_json or not raw_json.strip():
+                raise ValueError("Empty response text from Grok API")
             parsed = json.loads(_strip_json_fences(raw_json))
             validated = _validate_and_normalize_case(parsed, difficulty=diff, crime_type=ctype, provider="grok")
             if validated:
-                logger.info("Successfully generated case with Grok.")
+                logger.info("Grok generation succeeded")
                 return validated
             logger.warning("Grok response was invalid or malformed JSON schema. Attempting offline fallback...")
         except Exception as e:
-            logger.warning(f"Grok generation failed ({e.__class__.__name__}). Attempting offline fallback...")
+            logger.warning(f"Grok generation failed ({e.__class__.__name__}: {e}). Attempting offline fallback...")
     else:
         logger.info("Grok API key not configured or missing. Skipping Grok provider.")
 
     # --- Level 3: Deterministic Offline Mock Fallback ---
-    logger.info(f"Using offline case fallback for difficulty={diff}, crime_type={ctype}.")
+    logger.info("Using offline fallback")
     offline_case = get_mock_case(difficulty=diff, crime_type=ctype)
     offline_case["provider"] = "offline"
     offline_case["is_fallback"] = True

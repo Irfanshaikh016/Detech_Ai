@@ -1,10 +1,12 @@
 import uuid
+import logging
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
 import backend.database.db as db
 import backend.services.gemini_service as gemini_service
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/cases", tags=["cases"])
 
 class GenerateCaseRequest(BaseModel):
@@ -74,6 +76,8 @@ def generate_case_endpoint(req: GenerateCaseRequest):
     sanitized_case["provider"] = provider
     sanitized_case["is_fallback"] = case_data.get("is_fallback", provider == "offline")
     
+    logger.info(f"Generated case '{case_id}' using provider '{provider}' (difficulty={difficulty}, crime_type={crime_type})")
+
     return {
         "status": "success",
         "case_id": case_id,

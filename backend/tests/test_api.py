@@ -489,3 +489,257 @@ def test_api_timeout_triggers_next_provider(client):
         mock_grok.assert_called_once()
 
 
+# =====================================================================
+# Master Test Suite: 12 Scenarios for Gemini 503 & Grok Fallback
+# =====================================================================
+
+def test_scenario_1_gemini_success(client):
+    """1. Gemini success."""
+    with patch("backend.services.gemini_service.call_gemini_api") as mock_gemini, \
+         patch("backend.services.gemini_service.call_grok_api") as mock_grok:
+        mock_gemini.return_value = json.dumps(SAMPLE_AI_CASE)
+        res = client.post("/api/cases/generate", json={
+            "difficulty": "Medium",
+            "crime_type": "Theft",
+            "api_key": "valid-gemini-key",
+            "grok_api_key": "valid-grok-key"
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "success"
+        assert data["provider"] == "gemini"
+        assert data["case"]["provider"] == "gemini"
+        assert data["case"]["is_fallback"] is False
+        mock_gemini.assert_called_once()
+        mock_grok.assert_not_called()
+
+
+def test_scenario_2_gemini_503_retry_then_success(client):
+    """2. Gemini temporary 503, then retry succeeds."""
+    import httpx
+    req = httpx.Request("POST", "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent")
+    r503 = httpx.Response(503, request=req)
+    r200 = httpx.Response(200, json={"candidates": [{"content": {"parts": [{"text": json.dumps(SAMPLE_AI_CASE)}]}}]}, request=req)
+
+    with patch("httpx.Client.post", side_effect=[r503, r200]) as mock_post, \
+         patch("time.sleep") as mock_sleep, \
+         patch("backend.services.gemini_service.call_grok_api") as mock_grok:
+        res = client.post("/api/cases/generate", json={
+            "difficulty": "Medium",
+            "crime_type": "Cybercrime",
+            "api_key": "temp-503-gemini-key",
+            "grok_api_key": "backup-grok-key"
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "success"
+        assert data["provider"] == "gemini"
+        assert data["case"]["provider"] == "gemini"
+        assert data["case"]["is_fallback"] is False
+        assert mock_post.call_count == 2
+        mock_sleep.assert_called_once()
+        mock_grok.assert_not_called()
+
+
+def test_scenario_3_gemini_repeated_503_exhausts_retries_grok_succeeds(client):
+    """3. Gemini repeated 503 exhausts retries, then Grok succeeds."""
+    import httpx
+    req = httpx.Request("POST", "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent")
+    r503 = httpx.Response(503, request=req)
+
+    with patch("httpx.Client.post", side_effect=[r503, r503, r503]) as mock_post, \
+         patch("time.sleep") as mock_sleep, \
+         patch("backend.services.gemini_service.call_grok_api") as mock_grok:
+        mock_grok.return_value = json.dumps(SAMPLE_AI_CASE)
+        res = client.post("/api/cases/generate", json={
+            "difficulty": "Medium",
+            "crime_type": "Cybercrime",
+            "api_key": "persistent-503-gemini-key",
+            "grok_api_key": "working-grok-key"
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "success"
+        assert data["provider"] == "grok"
+        assert data["case"]["provider"] == "grok"
+        assert data["case"]["is_fallback"] is False
+        assert mock_post.call_count == 3
+        assert mock_sleep.call_count == 2
+        mock_grok.assert_called_once()
+
+
+def test_scenario_4_gemini_and_grok_fail_offline_fallback(client):
+    """4. Gemini failure and Grok failure, then offline fallback."""
+    with patch("backend.services.gemini_service.call_gemini_api") as mock_gemini, \
+         patch("backend.services.gemini_service.call_grok_api") as mock_grok:
+        mock_gemini.side_effect = Exception("Gemini service unavailable 503")
+        mock_grok.side_effect = Exception("Grok rate limit 429")
+        res = client.post("/api/cases/generate", json={
+            "difficulty": "Medium",
+            "crime_type": "Murder",
+            "api_key": "failing-gemini-key",
+            "grok_api_key": "failing-grok-key"
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "success"
+        assert data["provider"] == "offline"
+        assert data["case"]["provider"] == "offline"
+        assert data["case"]["is_fallback"] is True
+
+
+def test_scenario_5_missing_gemini_key(client):
+    """5. Missing Gemini key -> skips Gemini, tries Grok."""
+    with patch.dict("os.environ", {"GEMINI_API_KEY": "", "GROK_API_KEY": ""}), \
+         patch("backend.services.gemini_service.call_gemini_api") as mock_gemini, \
+         patch("backend.services.gemini_service.call_grok_api") as mock_grok:
+        mock_grok.return_value = json.dumps(SAMPLE_AI_CASE)
+        res = client.post("/api/cases/generate", json={
+            "difficulty": "Medium",
+            "crime_type": "Cybercrime",
+            "api_key": "",
+            "grok_api_key": "valid-grok-key"
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["provider"] == "grok"
+        mock_gemini.assert_not_called()
+        mock_grok.assert_called_once()
+
+
+def test_scenario_6_missing_grok_key(client):
+    """6. Gemini fails and Grok key is missing -> skips Grok, uses offline."""
+    with patch.dict("os.environ", {"GEMINI_API_KEY": "", "GROK_API_KEY": ""}), \
+         patch("backend.services.gemini_service.call_gemini_api") as mock_gemini, \
+         patch("backend.services.gemini_service.call_grok_api") as mock_grok:
+        mock_gemini.side_effect = Exception("Gemini 503 error")
+        res = client.post("/api/cases/generate", json={
+            "difficulty": "Easy",
+            "crime_type": "Theft",
+            "api_key": "failing-gemini",
+            "grok_api_key": ""
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["provider"] == "offline"
+        assert data["case"]["is_fallback"] is True
+        mock_gemini.assert_called_once()
+        mock_grok.assert_not_called()
+
+
+def test_scenario_7_invalid_gemini_json(client):
+    """7. Invalid Gemini JSON -> Grok fallback is attempted."""
+    with patch("backend.services.gemini_service.call_gemini_api") as mock_gemini, \
+         patch("backend.services.gemini_service.call_grok_api") as mock_grok:
+        mock_gemini.return_value = "{malformed JSON from Gemini"
+        mock_grok.return_value = json.dumps(SAMPLE_AI_CASE)
+        res = client.post("/api/cases/generate", json={
+            "difficulty": "Medium",
+            "crime_type": "Cybercrime",
+            "api_key": "gemini-key",
+            "grok_api_key": "grok-key"
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["provider"] == "grok"
+        assert data["case"]["is_fallback"] is False
+        mock_gemini.assert_called_once()
+        mock_grok.assert_called_once()
+
+
+def test_scenario_8_invalid_grok_json(client):
+    """8. Invalid Grok JSON -> falls back to offline generator."""
+    with patch("backend.services.gemini_service.call_gemini_api") as mock_gemini, \
+         patch("backend.services.gemini_service.call_grok_api") as mock_grok:
+        mock_gemini.side_effect = Exception("Gemini 503")
+        mock_grok.return_value = "<html>Not valid JSON from Grok</html>"
+        res = client.post("/api/cases/generate", json={
+            "difficulty": "Hard",
+            "crime_type": "Murder",
+            "api_key": "gemini-key",
+            "grok_api_key": "grok-key"
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["provider"] == "offline"
+        assert data["case"]["is_fallback"] is True
+        assert data["case"]["difficulty"] == "Hard"
+
+
+def test_scenario_9_empty_provider_response(client):
+    """9. Empty provider response -> rejected and triggers fallback."""
+    with patch("backend.services.gemini_service.call_gemini_api") as mock_gemini, \
+         patch("backend.services.gemini_service.call_grok_api") as mock_grok:
+        mock_gemini.return_value = "   "
+        mock_grok.return_value = ""
+        res = client.post("/api/cases/generate", json={
+            "difficulty": "Medium",
+            "crime_type": "Theft",
+            "api_key": "gemini-key",
+            "grok_api_key": "grok-key"
+        })
+        assert res.status_code == 200
+        data = res.json()
+        assert data["provider"] == "offline"
+        assert data["case"]["is_fallback"] is True
+
+
+def test_scenario_10_correct_provider_metadata(client):
+    """10. Correct provider metadata ("gemini", "grok", "offline")."""
+    # Gemini
+    with patch("backend.services.gemini_service.call_gemini_api", return_value=json.dumps(SAMPLE_AI_CASE)):
+        res1 = client.post("/api/cases/generate", json={"api_key": "valid-gemini-key-123", "difficulty": "Easy", "crime_type": "Theft"})
+        d1 = res1.json()
+        assert d1["provider"] == "gemini"
+        assert d1["case"]["provider"] == "gemini"
+        assert d1["case"]["is_fallback"] is False
+
+    # Grok
+    with patch("backend.services.gemini_service.call_gemini_api", side_effect=Exception("Gemini failed")), \
+         patch("backend.services.gemini_service.call_grok_api", return_value=json.dumps(SAMPLE_AI_CASE)):
+        res2 = client.post("/api/cases/generate", json={"api_key": "valid-gemini-key-123", "grok_api_key": "valid-grok-key-123", "difficulty": "Easy", "crime_type": "Theft"})
+        d2 = res2.json()
+        assert d2["provider"] == "grok"
+        assert d2["case"]["provider"] == "grok"
+        assert d2["case"]["is_fallback"] is False
+
+    # Offline
+    with patch.dict("os.environ", {"GEMINI_API_KEY": "", "GROK_API_KEY": ""}):
+        res3 = client.post("/api/cases/generate", json={"difficulty": "Easy", "crime_type": "Theft"})
+        d3 = res3.json()
+        assert d3["provider"] == "offline"
+        assert d3["case"]["provider"] == "offline"
+        assert d3["case"]["is_fallback"] is True
+
+
+def test_scenario_11_response_schema_preserved(client):
+    """11. Existing endpoint response schema preserved without ground_truth leak."""
+    res = client.post("/api/cases/generate", json={"difficulty": "Medium", "crime_type": "Murder"})
+    assert res.status_code == 200
+    data = res.json()
+    assert "status" in data and data["status"] == "success"
+    assert "case_id" in data and data["case_id"].startswith("case_")
+    assert "provider" in data
+    assert "case" in data
+    c = data["case"]
+    required_case_keys = ["id", "title", "crime_type", "difficulty", "summary", "victim", "locations", "evidence", "suspects", "hints", "provider", "is_fallback"]
+    for k in required_case_keys:
+        assert k in c, f"Missing required case key: {k}"
+    assert "ground_truth" not in c, "ground_truth must be stripped from response to prevent cheating"
+
+
+def test_scenario_12_difficulty_selection_preserved(client):
+    """12. Existing difficulty-selection behavior preserved across Easy, Medium, Hard."""
+    with patch.dict("os.environ", {"GEMINI_API_KEY": "", "GROK_API_KEY": ""}):
+        for diff in ["Easy", "Medium", "Hard"]:
+            res = client.post("/api/cases/generate", json={"difficulty": diff, "crime_type": "Theft"})
+            assert res.status_code == 200
+            data = res.json()
+            case = data["case"]
+            assert case["difficulty"] == diff
+            assert len(case["suspects"]) >= 3
+            assert len(case["evidence"]) >= 5
+            assert len(case["locations"]) >= 1
+
+
+
