@@ -289,7 +289,8 @@ def evaluate_accusation(
     accused_suspect_id: str,
     motive_provided: str,
     evidence_ids: List[str],
-    api_key: str = ""
+    api_key: str = "",
+    hints_used: int = 0
 ) -> Dict[str, Any]:
     ground_truth = case_data.get("ground_truth", {})
     actual_criminal_id = ground_truth.get("criminal_id")
@@ -303,6 +304,12 @@ def evaluate_accusation(
 
     presented_ev = [evidence_map[eid] for eid in evidence_ids if eid in evidence_map]
     presented_ev_names = [e["name"] for e in presented_ev]
+    smoking_gun_id = ground_truth.get("smoking_gun_evidence")
+    has_smoking_gun = bool(smoking_gun_id and smoking_gun_id in evidence_ids)
+
+    clean_motive = (motive_provided or "").strip()
+    has_motive = len(clean_motive) >= 8
+    detailed_motive = len(clean_motive) >= 20
 
     system_instruction = (
         "You are an impartial Supreme AI Judge presiding over a crime trial. "
@@ -321,20 +328,26 @@ PLAYER'S ACCUSATION:
 - Accused Suspect: {accused_suspect.get('name')} (ID: {accused_suspect_id})
 - Player's Claimed Motive: "{motive_provided}"
 - Evidence Presented: {presented_ev_names}
+- Hints Used: {hints_used}
 
-TASK:
-1. Determine if accusation is correct.
-2. Calculate Detective Score from 0 to 100 based on accuracy, evidence strength, and motive alignment.
+SCORING GUIDELINES:
+1. If accused is NOT the culprit, is_correct must be false and final score must be <= 35.
+2. If accused IS the culprit:
+   - Base score: 75.
+   - +15 bonus if smoking gun evidence was presented.
+   - -25 penalty if NO evidence was presented.
+   - -15 penalty if motive is blank or superficial.
+   - Deduct 5 points per hint used ({hints_used * 5} pts deduction).
+   - Clamp final score between 50 and 100.
 3. Calculate sub-scores: evidence_strength (0-100), logic_score (0-100), thoroughness_score (0-100).
 4. Detail which clues support the verdict and which crucial evidence clues were ignored.
-5. Write a compelling, judge-like explanation paragraph summarizing the verdict.
 
 Return ONLY a JSON object:
 {{
   "is_correct": {json.dumps(is_correct)},
-  "score": 92,
-  "evidence_strength": 95,
-  "logic_score": 88,
+  "score": 90,
+  "evidence_strength": 90,
+  "logic_score": 85,
   "thoroughness_score": 90,
   "judge_explanation": "Detailed verdict statement...",
   "supported_clues": ["Clue A", "Clue B"],
@@ -345,17 +358,70 @@ Return ONLY a JSON object:
     try:
         raw_json = call_gemini_api(prompt, system_instruction=system_instruction, api_key=api_key, response_json=True, max_output_tokens=3072)
         verdict = json.loads(_strip_json_fences(raw_json))
+        # Ensure score adheres to bounds
+        if not is_correct:
+            verdict["is_correct"] = False
+            verdict["score"] = min(35, verdict.get("score", 30))
+        else:
+            verdict["is_correct"] = True
+            verdict["score"] = max(50, min(100, verdict.get("score", 85)))
         return verdict
     except Exception as e:
-        logger.warning(f"Gemini Judge API failed ({e}), using fallback judge logic.")
-        base_score = 92 if is_correct else 35
+        logger.warning(f"Gemini Judge API failed ({e}), using stabilized fallback judge logic.")
+        total_ev_count = max(1, len(case_data.get("evidence", [])))
+        ev_count = len(presented_ev)
+        
+        if is_correct:
+            # Deterministic scoring for correct accusation
+            score = 75
+            if has_smoking_gun:
+                score += 15
+            else:
+                score += min(10, ev_count * 5)
+                
+            if not has_motive:
+                score -= 15
+            elif detailed_motive:
+                score += 5
+                
+            if ev_count == 0:
+                score -= 25
+                
+            score -= (hints_used * 5)
+            final_score = max(50, min(100, score))
+            
+            ev_strength = min(100, max(25, 45 + (30 if has_smoking_gun else 0) + (10 * min(3, ev_count)) - (25 if ev_count == 0 else 0)))
+            logic = min(100, max(30, 60 + (25 if detailed_motive else 0) - (20 if not has_motive else 0) - (hints_used * 5)))
+            thoroughness = min(100, max(20, int((ev_count / total_ev_count) * 100)))
+            
+            explanation = (
+                f"The Court finds the accused {accused_suspect.get('name')} GUILTY beyond reasonable doubt. "
+                f"The indictment is corroborated by forensic evidence presented by the detective."
+            )
+        else:
+            # Deterministic scoring for incorrect accusation
+            score = 20 + min(10, ev_count * 3)
+            if ev_count == 0:
+                score -= 10
+            final_score = max(5, min(35, score))
+            
+            ev_strength = min(40, max(10, 15 + (5 * min(4, ev_count))))
+            logic = 20
+            thoroughness = min(40, max(10, int((ev_count / total_ev_count) * 40)))
+            
+            explanation = (
+                f"Case DISMISSED! Accused {accused_suspect.get('name')} is innocent. "
+                f"The evidence cited fails to link the suspect to the primary crime, and the true perpetrator was {actual_criminal.get('name')}."
+            )
+
         return {
             "is_correct": is_correct,
-            "score": base_score,
-            "evidence_strength": 90 if is_correct else 40,
-            "logic_score": 85 if is_correct else 30,
-            "thoroughness_score": 95 if is_correct else 35,
-            "judge_explanation": f"The Court finds the accused {accused_suspect.get('name')} GUILTY beyond reasonable doubt!" if is_correct else f"Case DISMISSED! Accused {accused_suspect.get('name')} is innocent; true culprit was {actual_criminal.get('name')}.",
+            "score": final_score,
+            "evidence_strength": ev_strength,
+            "logic_score": logic,
+            "thoroughness_score": thoroughness,
+            "judge_explanation": explanation,
             "supported_clues": presented_ev_names,
             "ignored_clues": [e["name"] for e in case_data.get("evidence", []) if e["id"] not in evidence_ids]
         }
+

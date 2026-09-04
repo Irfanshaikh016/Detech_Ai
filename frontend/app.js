@@ -135,14 +135,18 @@ function renderBriefing(){
   document.getElementById('brief-victim-name').textContent = v.name || 'Unknown';
   document.getElementById('brief-victim-occ').textContent = v.occupation || '';
   document.getElementById('brief-victim-bg').textContent = v.background || '';
+  const banner = document.getElementById('brief-fallback-banner');
   if(c.is_fallback){
-    toast('⚠ Offline Demo Mode — no Gemini key configured, using local case generator.');
+    if(banner) banner.classList.remove('hidden');
+    toast('⚡ Offline Demo Mode — playing pre-packaged case without Gemini API key.');
+  } else {
+    if(banner) banner.classList.add('hidden');
   }
 }
 
 function enterHub(){
   document.getElementById('hub-case-title').textContent = state.case.title;
-  document.getElementById('hub-case-badge').textContent = state.case.difficulty + ' · ' + state.case.crime_type;
+  document.getElementById('hub-case-badge').textContent = state.case.difficulty + ' · ' + state.case.crime_type + (state.case.is_fallback ? ' · ⚡ Offline' : '');
   updateTabCounts();
   switchTab('locations');
   showScreen('screen-hub');
@@ -431,6 +435,7 @@ async function submitAccusation(){
       evidence_ids: Array.from(state.selectedEvidenceIds),
       player_name: state.playerName,
       api_key: state.apiKey || undefined,
+      hints_used: state.hintsRevealed.length,
     }});
     renderVerdict(res.verdict);
     showScreen('screen-verdict');

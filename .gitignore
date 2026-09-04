@@ -2,5 +2,9 @@ __pycache__/
 *.pyc
 .env
 backend/database/detectai.db
+*.db
 .venv/
 venv/
+.pytest_cache/
+*.zip
+

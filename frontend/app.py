@@ -698,6 +698,9 @@ else:
     st.caption(f"{b1}  ➔  {b2}  ➔  {b3}  ➔  {b4}  ➔  {b5}")
     st.progress(progress_val)
 
+    if case.get("is_fallback"):
+        st.info("⚡ **Offline Demo Mode**: Running pre-engineered forensic mystery scenario without external Gemini API key. Add an API Key in the sidebar for infinite procedurally-generated AI cases.")
+
     # 2. DETECTIVE DASHBOARD (4 KPI CARDS)
     if progress_val < 0.4:
         rank_name = "Novice Sleuth"
@@ -1220,7 +1223,8 @@ DETECTIVE NOTES:
                                     accused_suspect_id=accused_id,
                                     motive_provided=motive_input.strip(),
                                     evidence_ids=selected_evidence_ids,
-                                    api_key=st.session_state.api_key
+                                    api_key=st.session_state.api_key,
+                                    hints_used=st.session_state.used_hints
                                 )
                                 db.save_verdict(
                                     case_id=case_id,
@@ -1245,7 +1249,8 @@ DETECTIVE NOTES:
                                     "motive_provided": motive_input.strip(),
                                     "evidence_ids": selected_evidence_ids,
                                     "player_name": st.session_state.player_name,
-                                    "api_key": st.session_state.api_key
+                                    "api_key": st.session_state.api_key,
+                                    "hints_used": st.session_state.used_hints
                                 }
                                 j_res = requests.post(f"{BACKEND_URL}/api/cases/{case_id}/judge", json=payload, timeout=25)
                                 if j_res.status_code == 200:

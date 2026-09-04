@@ -51,6 +51,10 @@ except Exception as e:
 if cases_router:
     app.include_router(cases_router)
 
+@app.get("/api/health")
+def api_health():
+    return {"status": "ok"}
+
 @app.get("/health")
 def health_check():
     return {"status": "healthy", "service": "DetectAI Backend"}

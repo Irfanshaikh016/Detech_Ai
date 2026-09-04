@@ -52,9 +52,23 @@ try:
 except Exception as e:
     print(f"[DetectAI] Database init warning: {e}")
 
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
 # Include API routes
 if cases_router:
-    app.include_router(cases_router, prefix="/api")
+    app.include_router(cases_router)
+
+# Mount frontend directory for static assets if present
+FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
+INDEX_HTML = os.path.join(FRONTEND_DIR, "index.html")
+if os.path.isdir(FRONTEND_DIR):
+    app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+
+@app.get("/api/health")
+def api_health_check():
+    """API health check endpoint"""
+    return {"status": "ok"}
 
 @app.get("/health")
 def health_check():
@@ -64,13 +78,16 @@ def health_check():
 @app.get("/")
 def root():
     """Root endpoint"""
+    if os.path.exists(INDEX_HTML):
+        return FileResponse(INDEX_HTML)
     return {
         "app": "DetectAI - AI Crime Investigation Game",
         "status": "online",
         "version": "1.0.0",
         "docs": "/docs",
-        "health": "/health"
+        "health": "/api/health"
     }
 
 # Mangum handler for Vercel
 handler = Mangum(app)
+

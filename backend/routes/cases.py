@@ -28,6 +28,7 @@ class JudgeRequest(BaseModel):
     evidence_ids: List[str]
     player_name: Optional[str] = "Detective"
     api_key: Optional[str] = None
+    hints_used: Optional[int] = 0
 
 @router.get("/leaderboard")
 def get_leaderboard_endpoint():
@@ -170,7 +171,8 @@ def judge_accusation_endpoint(case_id: str, req: JudgeRequest):
         accused_suspect_id=req.accused_suspect_id,
         motive_provided=req.motive_provided,
         evidence_ids=req.evidence_ids,
-        api_key=req.api_key or ""
+        api_key=req.api_key or "",
+        hints_used=req.hints_used or 0
     )
     
     # Save verdict to SQLite
