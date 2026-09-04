@@ -3,7 +3,7 @@ import json
 import logging
 import httpx
 from typing import Dict, Any, List, Optional
-from services.mock_cases import get_mock_case
+from backend.services.mock_cases import get_mock_case
 
 logger = logging.getLogger(__name__)
 

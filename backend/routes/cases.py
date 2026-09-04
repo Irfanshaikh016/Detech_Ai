@@ -2,8 +2,8 @@ import uuid
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
-import database.db as db
-import services.gemini_service as gemini_service
+import backend.database.db as db
+import backend.services.gemini_service as gemini_service
 
 router = APIRouter(prefix="/api/cases", tags=["cases"])
 

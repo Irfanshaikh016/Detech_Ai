@@ -7,16 +7,22 @@ import random
 import uuid
 import streamlit as st
 
-# Add backend directory to sys.path for direct combined backend execution
-BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "backend"))
-if BACKEND_DIR not in sys.path:
-    sys.path.insert(0, BACKEND_DIR)
+# Add project root and backend directory to sys.path
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+BACKEND_DIR = os.path.abspath(os.path.join(ROOT_DIR, "backend"))
+for p in (ROOT_DIR, BACKEND_DIR):
+    if p not in sys.path:
+        sys.path.insert(0, p)
 
 # Import backend modules directly
 USE_DIRECT_SERVICES = False
 try:
-    import database.db as db
-    import services.gemini_service as gemini_service
+    try:
+        import backend.database.db as db
+        import backend.services.gemini_service as gemini_service
+    except ImportError:
+        import database.db as db
+        import services.gemini_service as gemini_service
     db.init_db()
     USE_DIRECT_SERVICES = True
 except Exception as e:

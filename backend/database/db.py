@@ -4,7 +4,7 @@ import os
 import json
 from datetime import datetime
 
-DB_PATH = "detectai.db"
+DB_PATH = os.environ.get("DETECTAI_TEST_DB", "detectai.db")
 
 def get_connection():
     """Get a database connection"""

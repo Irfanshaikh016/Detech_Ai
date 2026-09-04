@@ -43,12 +43,11 @@ def main():
     print("==================================================")
 
     if mode in ["backend", "web"]:
-        backend_dir = os.path.join(root_dir, "backend")
         port = args.port or int(os.getenv("PORT", 8000))
         print(f"[DetectAI] Launching FastAPI Backend & Noir Web UI on http://127.0.0.1:{port}...")
-        cmd = [sys.executable, "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", str(port), "--reload"]
+        cmd = [sys.executable, "-m", "uvicorn", "backend.main:app", "--host", "127.0.0.1", "--port", str(port), "--reload"]
         try:
-            subprocess.run(cmd, cwd=backend_dir, check=True)
+            subprocess.run(cmd, cwd=root_dir, check=True)
         except KeyboardInterrupt:
             print("\n[DetectAI] Backend server stopped. Goodbye!")
     else:
