@@ -14,6 +14,7 @@ const state = {
   hintsRevealed: [],
   accusedSuspectId: null,
   selectedEvidenceIds: new Set(),
+  isGenerating: false,
 };
 
 const CRIME_TYPES = ['Murder','Theft','Kidnapping','Cybercrime','Fraud'];
@@ -97,10 +98,20 @@ function showScreen(id){
 function goHome(){ showScreen('screen-setup'); }
 
 async function generateCase(){
-  state.playerName = document.getElementById('player-name').value.trim() || 'Detective';
+  if(state.isGenerating) return;
+  state.isGenerating = true;
+
   const btn = document.getElementById('btn-generate');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span> Building your case…';
+  if(btn){
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Generating Case...';
+  }
+
+  const loader = document.getElementById('case-loader-overlay');
+  if(loader) loader.classList.remove('hidden');
+
+  state.playerName = document.getElementById('player-name').value.trim() || 'Detective';
+
   try{
     const res = await api('/api/cases/generate', {method:'POST', body:{
       difficulty: state.difficulty, crime_type: state.crimeType, api_key: state.apiKey || undefined
@@ -115,10 +126,15 @@ async function generateCase(){
     state.accusedSuspectId = null;
     renderBriefing();
     showScreen('screen-briefing');
-  }catch(e){}
-  finally{
-    btn.disabled = false;
-    btn.innerHTML = 'Open a New Case File →';
+  }catch(e){
+    toast('Unable to generate the case. Please try again.', true);
+  }finally{
+    state.isGenerating = false;
+    if(loader) loader.classList.add('hidden');
+    if(btn){
+      btn.disabled = false;
+      btn.innerHTML = 'Open a New Case File →';
+    }
   }
 }
 

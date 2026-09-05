@@ -122,6 +122,30 @@ def test_frontend_served(client):
         assert res.json()["status"] == "online"
 
 
+def test_case_generation_loader_frontend(client):
+    """Verify loader overlay, styling, and JavaScript logic exist in served frontend."""
+    # Test index.html contains loader structure and required text
+    html_res = client.get("/")
+    assert html_res.status_code == 200
+    html_text = html_res.text
+    assert "case-loader-overlay" in html_text
+    assert "Opening Case File..." in html_text
+    assert "The AI is preparing a new mystery." in html_text
+    assert "Open a New Case File →" in html_text
+    assert "loader-glass" in html_text
+    assert "loader-doc-scanner" in html_text
+    assert "prefers-reduced-motion" in html_text
+
+    # Test static app.js contains isGenerating state, loader toggle, and error handling
+    js_res = client.get("/static/app.js")
+    assert js_res.status_code == 200
+    js_text = js_res.text
+    assert "isGenerating" in js_text
+    assert "Generating Case..." in js_text
+    assert "case-loader-overlay" in js_text
+    assert "Unable to generate the case. Please try again." in js_text
+
+
 def test_list_cases(client):
     gen = client.post("/api/cases/generate", json={"difficulty": "Easy", "crime_type": "Theft"})
     assert gen.status_code == 200
