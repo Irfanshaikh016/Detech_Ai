@@ -366,6 +366,82 @@
     .interrogate-wrap{ grid-template-columns:1fr; }
     .clue-cols{ grid-template-columns:1fr; }
   }
+  /* How to Play & Rules Screens */
+  .intro-wrap{
+    max-width:860px; margin:0 auto; padding:40px 24px 80px;
+  }
+  .intro-card{
+    background:var(--bg-panel); border:1px solid var(--border);
+    border-top:3px solid var(--amber); border-radius:var(--radius);
+    padding:36px 32px 32px; box-shadow:var(--shadow); position:relative;
+  }
+  .intro-card::after{
+    content:attr(data-stamp); position:absolute; top:22px; right:26px;
+    border:2px solid var(--amber); color:var(--amber-bright);
+    padding:4px 10px; font-family:'Special Elite',cursive;
+    letter-spacing:1.5px; font-size:11px; text-transform:uppercase;
+    transform:rotate(4deg); border-radius:3px; opacity:.85;
+  }
+  .intro-title{
+    font-size:32px; margin:0 0 8px; color:var(--paper); letter-spacing:1px;
+  }
+  .intro-sub{
+    font-family:'Courier Prime',monospace; color:var(--paper-dim);
+    font-size:14.5px; line-height:1.6; margin:0 0 28px;
+    border-left:2px solid var(--amber); padding-left:14px;
+  }
+  .steps-grid{
+    display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:28px;
+  }
+  .step-card{
+    background:var(--bg-panel-2); border:1px solid var(--border);
+    border-radius:var(--radius); padding:16px 18px;
+    display:flex; gap:14px; align-items:flex-start;
+  }
+  .step-num{
+    font-family:'Special Elite',cursive; font-size:20px;
+    color:var(--amber-bright); background:rgba(200,137,47,0.12);
+    border:1px solid rgba(200,137,47,0.3); padding:4px 8px;
+    border-radius:4px; line-height:1; min-width:38px; text-align:center;
+  }
+  .step-body h4{
+    margin:0 0 4px; font-size:14.5px; color:var(--paper); letter-spacing:.3px;
+  }
+  .step-body p{
+    margin:0; font-size:12.5px; color:var(--paper-dim);
+    line-height:1.55; font-family:'Courier Prime',monospace;
+  }
+  .rules-list{
+    display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:26px;
+  }
+  .rule-item{
+    background:var(--bg-panel-2); border:1px solid var(--border);
+    border-radius:var(--radius); padding:12px 14px;
+    display:flex; gap:10px; align-items:flex-start;
+    font-size:13px; color:var(--paper-dim); line-height:1.5;
+    font-family:'Courier Prime',monospace;
+  }
+  .rule-bullet{
+    color:var(--amber-bright); font-weight:bold; font-size:15px; line-height:1;
+  }
+  .notice-box{
+    background:rgba(200,137,47,0.1); border:1.5px solid var(--amber);
+    border-radius:var(--radius); padding:14px 18px;
+    display:flex; align-items:center; gap:12px; margin-bottom:28px;
+    color:var(--amber-bright); font-family:'Courier Prime',monospace;
+    font-size:13.5px; font-weight:700;
+  }
+  .notice-icon{ font-size:18px; }
+  .intro-actions{
+    display:flex; align-items:center; justify-content:space-between;
+    gap:12px; border-top:1px solid var(--border); padding-top:20px;
+  }
+  @media (max-width:768px){
+    .steps-grid, .rules-list{ grid-template-columns:1fr; }
+    .intro-card{ padding:24px 18px; }
+    .intro-title{ font-size:26px; }
+    .intro-card::after{ position:static; display:inline-block; margin-bottom:12px; }
+  }
   @media (max-width:480px){
     .loader-card{ padding:24px 18px 20px; }
     .loader-title{ font-size:19px; }
@@ -387,7 +463,139 @@
   </div>
   <div class="topbar-actions" id="topbar-actions"></div>
 </div>
-<div id="screen-setup">
+<div id="screen-home">
+  <div class="setup-hero">
+    <div>
+      <div class="stamp">DetectAI Bureau</div>
+      <h1 class="type-line">Every case is different.<br>So is every suspect.</h1>
+      <p class="sub">DetectAI writes a brand new mystery every time you play — a victim, a motive, a room full of liars, and one of them did it. Question suspects, chase down evidence, and build a case the AI Judge will actually believe.</p>
+    </div>
+    <div class="folder">
+      <div style="font-family:'Special Elite',cursive;font-size:18px;margin-bottom:10px;color:#181206;">ORIENTATION & CASE FILES</div>
+      <p style="font-size:13px;line-height:1.6;color:#4a3f26;margin:0 0 16px;font-family:'Courier Prime',monospace;">
+        Welcome to the Bureau, Detective. Before stepping into an active crime scene, review the investigation protocol, evidence handling rules, and the AI Judge's evaluation criteria.
+      </p>
+      <button class="btn btn-primary" id="btn-home-how-to-play" style="width:100%;padding:13px;font-size:14.5px;" onclick="showScreen('screen-how-to-play')">How to Play →</button>
+      <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:8px;" onclick="showCaseHistory()">📂 Or Browse Past Case Files</button>
+      <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:4px;" onclick="showLeaderboard()">🏆 View Detective Leaderboard</button>
+      <p style="font-size:11px;color:#7a6c47;margin-top:12px;margin-bottom:0;">Ready for action? Learn the ropes or jump into previous case archives.</p>
+    </div>
+  </div>
+</div>
+
+<div id="screen-how-to-play" class="hidden">
+  <div class="intro-wrap">
+    <div class="intro-card" data-stamp="Field Manual">
+      <h2 class="intro-title">HOW TO PLAY</h2>
+      <p class="intro-sub">Your mission is to solve the case before making the final accusation.</p>
+      
+      <div class="steps-grid">
+        <div class="step-card">
+          <div class="step-num">01</div>
+          <div class="step-body">
+            <h4>Open the case file</h4>
+            <p>Choose a crime type, difficulty, and detective name.</p>
+          </div>
+        </div>
+        <div class="step-card">
+          <div class="step-num">02</div>
+          <div class="step-body">
+            <h4>Investigate the evidence</h4>
+            <p>Explore locations, inspect evidence, and read the available information.</p>
+          </div>
+        </div>
+        <div class="step-card">
+          <div class="step-num">03</div>
+          <div class="step-body">
+            <h4>Interrogate suspects</h4>
+            <p>Ask questions, compare answers, and identify contradictions.</p>
+          </div>
+        </div>
+        <div class="step-card">
+          <div class="step-num">04</div>
+          <div class="step-body">
+            <h4>Build your theory</h4>
+            <p>Connect the evidence, motives, timelines, and suspect statements.</p>
+          </div>
+        </div>
+        <div class="step-card">
+          <div class="step-num">05</div>
+          <div class="step-body">
+            <h4>Make your accusation</h4>
+            <p>Select the suspect you believe committed the crime and submit your verdict.</p>
+          </div>
+        </div>
+        <div class="step-card">
+          <div class="step-num">06</div>
+          <div class="step-body">
+            <h4>Receive your result</h4>
+            <p>The AI Judge evaluates your accusation and shows your score and explanation.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="intro-actions">
+        <button class="btn btn-ghost" onclick="goHome()">← Home</button>
+        <button class="btn btn-primary" onclick="showScreen('screen-rules')">Next →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="screen-rules" class="hidden">
+  <div class="intro-wrap">
+    <div class="intro-card" data-stamp="Official Protocol">
+      <h2 class="intro-title">RULES & GUIDELINES</h2>
+      
+      <div class="rules-list">
+        <div class="rule-item">
+          <span class="rule-bullet">◆</span>
+          <span>Read the evidence carefully before making an accusation.</span>
+        </div>
+        <div class="rule-item">
+          <span class="rule-bullet">◆</span>
+          <span>Use the available clues to build a logical theory.</span>
+        </div>
+        <div class="rule-item">
+          <span class="rule-bullet">◆</span>
+          <span>Suspects may lie, hide information, or provide misleading statements.</span>
+        </div>
+        <div class="rule-item">
+          <span class="rule-bullet">◆</span>
+          <span>Not every clue is equally important.</span>
+        </div>
+        <div class="rule-item">
+          <span class="rule-bullet">◆</span>
+          <span>Compare alibis with timestamps and evidence.</span>
+        </div>
+        <div class="rule-item">
+          <span class="rule-bullet">◆</span>
+          <span>You can use hints when you need help.</span>
+        </div>
+        <div class="rule-item">
+          <span class="rule-bullet">◆</span>
+          <span>Make your final accusation only when you are ready.</span>
+        </div>
+        <div class="rule-item">
+          <span class="rule-bullet">◆</span>
+          <span>Your score depends on the quality of your investigation and verdict.</span>
+        </div>
+      </div>
+
+      <div class="notice-box">
+        <span class="notice-icon">⚠️</span>
+        <span>Every case is different. Think carefully before you accuse.</span>
+      </div>
+
+      <div class="intro-actions">
+        <button class="btn btn-ghost" onclick="showScreen('screen-how-to-play')">← Back</button>
+        <button class="btn btn-primary" onclick="showScreen('screen-setup')">Start Case →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="screen-setup" class="hidden">
   <div class="setup-hero">
     <div>
       <div class="stamp">Open Case</div>
@@ -399,7 +607,8 @@
       <div class="field"><label>Difficulty</label><div class="choice-row" id="diff-choices"></div></div>
       <div class="field"><label>Detective Name</label><input type="text" id="player-name" placeholder="e.g. Detective Marlowe" value="Detective"></div>
       <button class="btn btn-primary" id="btn-generate" onclick="generateCase()">Open a New Case File →</button>
-      <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:8px;" onclick="showCaseHistory()">📂 Or Browse Past Case Files</button>
+      <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:8px;" onclick="showScreen('screen-rules')">← Back to Rules</button>
+      <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:4px;" onclick="showCaseHistory()">📂 Or Browse Past Case Files</button>
       <p style="font-size:11px;color:#7a6c47;margin-top:10px;">Connects to your DetectAI backend. Check the gear icon (top right) if it can't connect.</p>
     </div>
   </div>

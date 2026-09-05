@@ -146,6 +146,58 @@ def test_case_generation_loader_frontend(client):
     assert "Unable to generate the case. Please try again." in js_text
 
 
+def test_how_to_play_and_rules_flow_frontend(client):
+    """Verify How to Play and Rules flow screens, steps, rules, and navigation elements."""
+    html_res = client.get("/")
+    assert html_res.status_code == 200
+    html_text = html_res.text
+
+    # Screens exist
+    assert "screen-home" in html_text
+    assert "screen-how-to-play" in html_text
+    assert "screen-rules" in html_text
+    assert "screen-setup" in html_text
+
+    # How to play heading, supporting text, and steps
+    assert "HOW TO PLAY" in html_text
+    assert "Your mission is to solve the case before making the final accusation." in html_text
+    assert "01" in html_text and "Open the case file" in html_text
+    assert "02" in html_text and "Investigate the evidence" in html_text
+    assert "03" in html_text and "Interrogate suspects" in html_text
+    assert "04" in html_text and "Build your theory" in html_text
+    assert "05" in html_text and "Make your accusation" in html_text
+    assert "06" in html_text and "Receive your result" in html_text
+
+    # Rules heading, items, and caution notice
+    assert "RULES & GUIDELINES" in html_text
+    assert "Read the evidence carefully before making an accusation." in html_text
+    assert "Use the available clues to build a logical theory." in html_text
+    assert "Suspects may lie, hide information, or provide misleading statements." in html_text
+    assert "Not every clue is equally important." in html_text
+    assert "Compare alibis with timestamps and evidence." in html_text
+    assert "You can use hints when you need help." in html_text
+    assert "Make your final accusation only when you are ready." in html_text
+    assert "Your score depends on the quality of your investigation and verdict." in html_text
+    assert "Every case is different. Think carefully before you accuse." in html_text
+
+    # Navigation buttons
+    assert "How to Play →" in html_text
+    assert "Next →" in html_text
+    assert "Start Case →" in html_text
+    assert "← Back" in html_text
+    assert "Open a New Case File →" in html_text
+
+    # App.js registers new screens and navigation
+    js_res = client.get("/static/app.js")
+    assert js_res.status_code == 200
+    js_text = js_res.text
+    assert "'screen-home'" in js_text
+    assert "'screen-how-to-play'" in js_text
+    assert "'screen-rules'" in js_text
+    assert "'screen-setup'" in js_text
+    assert "popstate" in js_text
+
+
 def test_list_cases(client):
     gen = client.post("/api/cases/generate", json={"difficulty": "Easy", "crime_type": "Theft"})
     assert gen.status_code == 200

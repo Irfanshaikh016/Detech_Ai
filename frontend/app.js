@@ -22,6 +22,7 @@ const DIFFICULTIES = ['Easy','Medium','Hard'];
 
 function renderTopbarActions(){
   document.getElementById('topbar-actions').innerHTML = `
+    <button class="btn btn-ghost btn-sm" onclick="showScreen('screen-how-to-play')">📖 How to Play</button>
     <button class="btn btn-ghost btn-sm" onclick="showCaseHistory()">📁 Case Files</button>
     <button class="btn btn-ghost btn-sm" onclick="showLeaderboard()">🏆 Leaderboard</button>
     <button class="icon-btn" onclick="openSettings()" title="Backend settings">⚙</button>
@@ -88,14 +89,38 @@ function saveSettings(){
   toast('Settings saved.');
 }
 
-function showScreen(id){
-  ['screen-setup','screen-briefing','screen-hub','screen-verdict','screen-leaderboard','screen-history'].forEach(s=>{
+const SCREENS = [
+  'screen-home',
+  'screen-how-to-play',
+  'screen-rules',
+  'screen-setup',
+  'screen-briefing',
+  'screen-hub',
+  'screen-verdict',
+  'screen-leaderboard',
+  'screen-history'
+];
+
+function showScreen(id, pushState = true){
+  SCREENS.forEach(s=>{
     const el = document.getElementById(s);
     if(el) el.classList.toggle('hidden', s!==id);
   });
   window.scrollTo({top:0, behavior:'instant'});
+  if(pushState && window.history && window.history.pushState){
+    history.pushState({ screen: id }, '', '#' + id.replace('screen-', ''));
+  }
 }
-function goHome(){ showScreen('screen-setup'); }
+
+function goHome(){ showScreen('screen-home'); }
+
+window.addEventListener('popstate', (e)=>{
+  if(e.state && e.state.screen && SCREENS.includes(e.state.screen)){
+    showScreen(e.state.screen, false);
+  } else {
+    showScreen('screen-home', false);
+  }
+});
 
 async function generateCase(){
   if(state.isGenerating) return;
@@ -488,9 +513,10 @@ function renderVerdict(v){
       <div style="margin-top:8px;"><b>Motive:</b> ${escapeHtml(truth.motive||'')}</div>
       <div style="margin-top:8px;"><b>How it happened:</b> ${escapeHtml(truth.how_it_was_done||'')}</div>
     </div>
-    <div style="display:flex; gap:12px; justify-content:center; margin-top:26px;">
+    <div style="display:flex; gap:12px; justify-content:center; margin-top:26px; flex-wrap:wrap;">
       <button class="btn" onclick="showLeaderboard()">View Leaderboard</button>
-      <button class="btn btn-primary" onclick="goHome()">Start a New Case</button>
+      <button class="btn btn-primary" onclick="showScreen('screen-setup')">Start Another Case →</button>
+      <button class="btn btn-ghost" onclick="goHome()">Home</button>
     </div>`;
 }
 
