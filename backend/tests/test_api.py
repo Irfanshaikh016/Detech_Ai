@@ -187,15 +187,85 @@ def test_how_to_play_and_rules_flow_frontend(client):
     assert "← Back" in html_text
     assert "Open a New Case File →" in html_text
 
+    # Button ID and Screen ID
+    assert 'id="btn-how-to-play"' in html_text
+    assert 'id="how-to-play"' in html_text
+
+    # Backend settings modal removed
+    assert "settings-modal" not in html_text
+    assert "set-backend-url" not in html_text
+    assert "set-api-key" not in html_text
+
     # App.js registers new screens and navigation
     js_res = client.get("/static/app.js")
     assert js_res.status_code == 200
     js_text = js_res.text
+    assert "BACKEND_URL = window.location.origin" in js_text
     assert "'screen-home'" in js_text
     assert "'screen-how-to-play'" in js_text
+    assert "'how-to-play'" in js_text
     assert "'screen-rules'" in js_text
     assert "'screen-setup'" in js_text
     assert "popstate" in js_text
+    assert "btn-how-to-play" in js_text
+    assert "initHowToPlayListener" in js_text
+    assert "openSettings" not in js_text
+
+    # Favicon endpoint verified
+    fav_res = client.get("/favicon.ico")
+    assert fav_res.status_code == 200
+
+
+def test_onboarding_navigation_flow_end_to_end(client):
+    """
+    Test complete sequence:
+    Home → How to Play → Rules → Case Setup → Generate Case → Case Briefing
+    """
+    html_res = client.get("/")
+    assert html_res.status_code == 200
+    html = html_res.text
+
+    # 1. Home screen has How to Play button with correct id and target
+    assert 'id="screen-home"' in html
+    assert 'id="btn-how-to-play"' in html
+    assert "showScreen('how-to-play')" in html
+
+    # 2. How to Play screen has id="how-to-play", 6 steps, and Next -> Rules
+    assert 'id="how-to-play"' in html
+    assert "HOW TO PLAY" in html
+    assert "01" in html and "06" in html
+    assert "showScreen('screen-rules')" in html
+
+    # 3. Rules & Guidelines screen has 8 rules, Back -> How to Play, and Start Case -> Setup
+    assert 'id="screen-rules"' in html
+    assert "RULES & GUIDELINES" in html
+    assert "showScreen('how-to-play')" in html
+    assert "showScreen('screen-setup')" in html
+
+    # 4. Setup screen has Open a New Case File button
+    assert 'id="screen-setup"' in html
+    assert 'id="btn-generate"' in html
+    assert "generateCase()" in html
+
+    # 5. Generate Case API request succeeds and produces a valid playable case
+    gen_res = client.post("/api/cases/generate", json={
+        "difficulty": "Easy",
+        "crime_type": "Theft"
+    })
+    assert gen_res.status_code == 200
+    gen_data = gen_res.json()
+    assert gen_data["status"] == "success"
+    assert "case" in gen_data
+    assert "case_id" in gen_data
+    case = gen_data["case"]
+    assert "title" in case
+    assert len(case["suspects"]) >= 3
+    assert len(case["evidence"]) >= 3
+
+    # 6. Case Briefing screen exists in DOM to render case details
+    assert 'id="screen-briefing"' in html
+    assert 'id="brief-title"' in html
+    assert 'id="brief-summary"' in html
 
 
 def test_list_cases(client):

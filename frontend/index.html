@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>DetectAI — Case Files</title>
+<link rel="icon" href="/favicon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Courier+Prime:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -247,10 +248,6 @@
   table.lb-table{ width:100%; border-collapse:collapse; font-family:'Courier Prime',monospace; font-size:13.5px;}
   .lb-table th{ text-align:left; color:var(--muted); font-size:11px; letter-spacing:1px; text-transform:uppercase; padding:8px 10px; border-bottom:1px solid var(--border);}
   .lb-table td{ padding:10px; border-bottom:1px solid var(--border); }
-  .modal-overlay{ position:fixed; inset:0; background:rgba(8,7,4,.72); z-index:200; display:flex; align-items:center; justify-content:center; padding:20px;}
-  .modal{ background:var(--bg-panel); border:1px solid var(--border); border-radius:6px; max-width:420px; width:100%; padding:26px; box-shadow:var(--shadow);}
-  .modal .field input{ width:100%; background:var(--bg-panel-2); border:1px solid var(--border); color:var(--paper); padding:9px 11px; border-radius:var(--radius); font-size:13.5px;}
-  .modal-actions{ display:flex; justify-content:flex-end; gap:10px; margin-top:18px;}
   /* Case Generation Loader */
   .loader-overlay{
     position:fixed; inset:0;
@@ -475,7 +472,7 @@
       <p style="font-size:13px;line-height:1.6;color:#4a3f26;margin:0 0 16px;font-family:'Courier Prime',monospace;">
         Welcome to the Bureau, Detective. Before stepping into an active crime scene, review the investigation protocol, evidence handling rules, and the AI Judge's evaluation criteria.
       </p>
-      <button class="btn btn-primary" id="btn-home-how-to-play" style="width:100%;padding:13px;font-size:14.5px;" onclick="showScreen('screen-how-to-play')">How to Play →</button>
+      <button class="btn btn-primary" id="btn-how-to-play" style="width:100%;padding:13px;font-size:14.5px;" onclick="showScreen('how-to-play')">How to Play →</button>
       <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:8px;" onclick="showCaseHistory()">📂 Or Browse Past Case Files</button>
       <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:4px;" onclick="showLeaderboard()">🏆 View Detective Leaderboard</button>
       <p style="font-size:11px;color:#7a6c47;margin-top:12px;margin-bottom:0;">Ready for action? Learn the ropes or jump into previous case archives.</p>
@@ -483,7 +480,7 @@
   </div>
 </div>
 
-<div id="screen-how-to-play" class="hidden">
+<div id="how-to-play" class="screen-how-to-play hidden" data-screen="screen-how-to-play">
   <div class="intro-wrap">
     <div class="intro-card" data-stamp="Field Manual">
       <h2 class="intro-title">HOW TO PLAY</h2>
@@ -588,7 +585,7 @@
       </div>
 
       <div class="intro-actions">
-        <button class="btn btn-ghost" onclick="showScreen('screen-how-to-play')">← Back</button>
+        <button class="btn btn-ghost" onclick="showScreen('how-to-play')">← Back</button>
         <button class="btn btn-primary" onclick="showScreen('screen-setup')">Start Case →</button>
       </div>
     </div>
@@ -609,7 +606,7 @@
       <button class="btn btn-primary" id="btn-generate" onclick="generateCase()">Open a New Case File →</button>
       <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:8px;" onclick="showScreen('screen-rules')">← Back to Rules</button>
       <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:4px;" onclick="showCaseHistory()">📂 Or Browse Past Case Files</button>
-      <p style="font-size:11px;color:#7a6c47;margin-top:10px;">Connects to your DetectAI backend. Check the gear icon (top right) if it can't connect.</p>
+      <p style="font-size:11px;color:#7a6c47;margin-top:10px;">Connects directly to your DetectAI backend.</p>
     </div>
   </div>
 </div>
@@ -699,18 +696,6 @@
       <div class="doc-line w-50"></div>
     </div>
   </div>
-</div>
-<div id="settings-modal" class="modal-overlay hidden">
-  <div class="modal">
-    <h3>Backend Settings</h3>
-    <div class="field"><label>Backend URL</label><input type="text" id="set-backend-url" placeholder="http://127.0.0.1:8000"></div>
-    <div class="field"><label>Gemini API Key (optional — overrides server .env)</label><input type="text" id="set-api-key" placeholder="Leave blank to use server default"></div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeSettings()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveSettings()">Save</button>
-    </div>
-  </div>
-</div>
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v=1.0.1"></script>
 </body>
 </html>

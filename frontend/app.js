@@ -1,7 +1,7 @@
 /* DetectAI frontend — talks to FastAPI backend at /api/cases/* */
+const BACKEND_URL = window.location.origin;
+
 const state = {
-  backendUrl: localStorage.getItem('detectai_backend') || window.location.origin.replace(/\/$/, '') || 'http://127.0.0.1:8000',
-  apiKey: localStorage.getItem('detectai_apikey') || '',
   playerName: 'Detective',
   crimeType: 'Murder',
   difficulty: 'Medium',
@@ -22,10 +22,9 @@ const DIFFICULTIES = ['Easy','Medium','Hard'];
 
 function renderTopbarActions(){
   document.getElementById('topbar-actions').innerHTML = `
-    <button class="btn btn-ghost btn-sm" onclick="showScreen('screen-how-to-play')">📖 How to Play</button>
+    <button class="btn btn-ghost btn-sm" onclick="showScreen('how-to-play')">📖 How to Play</button>
     <button class="btn btn-ghost btn-sm" onclick="showCaseHistory()">📁 Case Files</button>
     <button class="btn btn-ghost btn-sm" onclick="showLeaderboard()">🏆 Leaderboard</button>
-    <button class="icon-btn" onclick="openSettings()" title="Backend settings">⚙</button>
   `;
 }
 
@@ -42,7 +41,7 @@ renderTopbarActions();
 initSetup();
 
 async function api(path, opts={}){
-  const url = state.backendUrl.replace(/\/$/,'') + path;
+  const url = BACKEND_URL.replace(/\/$/,'') + path;
   try{
     const res = await fetch(url, {
       method: opts.method || 'GET',
@@ -57,7 +56,7 @@ async function api(path, opts={}){
     return await res.json();
   }catch(err){
     if(err instanceof TypeError){
-      toast(`Can't reach the backend at ${state.backendUrl}. Check it's running and the URL is correct (gear icon, top right).`, true);
+      toast(`Can't reach the backend at ${BACKEND_URL}. Check that the service is running.`, true);
     } else {
       toast(err.message, true);
     }
@@ -74,23 +73,9 @@ function toast(msg, isError=false){
   setTimeout(()=>el.remove(), 5200);
 }
 
-function openSettings(){
-  document.getElementById('set-backend-url').value = state.backendUrl;
-  document.getElementById('set-api-key').value = state.apiKey;
-  document.getElementById('settings-modal').classList.remove('hidden');
-}
-function closeSettings(){ document.getElementById('settings-modal').classList.add('hidden'); }
-function saveSettings(){
-  state.backendUrl = document.getElementById('set-backend-url').value.trim() || 'http://127.0.0.1:8000';
-  state.apiKey = document.getElementById('set-api-key').value.trim();
-  localStorage.setItem('detectai_backend', state.backendUrl);
-  localStorage.setItem('detectai_apikey', state.apiKey);
-  closeSettings();
-  toast('Settings saved.');
-}
-
 const SCREENS = [
   'screen-home',
+  'how-to-play',
   'screen-how-to-play',
   'screen-rules',
   'screen-setup',
@@ -101,26 +86,91 @@ const SCREENS = [
   'screen-history'
 ];
 
+function normalizeScreenId(id) {
+  if (!id) return 'screen-home';
+  if (id === 'how-to-play' || id === 'screen-how-to-play') return 'how-to-play';
+  if (id === 'rules' || id === 'screen-rules') return 'screen-rules';
+  if (id === 'setup' || id === 'screen-setup') return 'screen-setup';
+  if (id === 'home' || id === 'screen-home') return 'screen-home';
+  return id;
+}
+
+const PRIMARY_SCREEN_IDS = [
+  'screen-home',
+  'how-to-play',
+  'screen-rules',
+  'screen-setup',
+  'screen-briefing',
+  'screen-hub',
+  'screen-verdict',
+  'screen-leaderboard',
+  'screen-history'
+];
+
 function showScreen(id, pushState = true){
-  SCREENS.forEach(s=>{
+  const target = normalizeScreenId(id);
+
+  PRIMARY_SCREEN_IDS.forEach(s => {
     const el = document.getElementById(s);
-    if(el) el.classList.toggle('hidden', s!==id);
+    if(el){
+      if(s === target){
+        el.classList.remove('hidden');
+      } else {
+        el.classList.add('hidden');
+      }
+    }
   });
-  window.scrollTo({top:0, behavior:'instant'});
+
+  window.scrollTo({top: 0, behavior: 'instant'});
+
   if(pushState && window.history && window.history.pushState){
-    history.pushState({ screen: id }, '', '#' + id.replace('screen-', ''));
+    const cleanHash = target.replace('screen-', '');
+    try {
+      history.pushState({ screen: target }, '', '#' + cleanHash);
+    } catch(e){}
   }
 }
 
 function goHome(){ showScreen('screen-home'); }
 
+// Safe event listener for How to Play button
+function initHowToPlayListener(){
+  const btn = document.getElementById('btn-how-to-play') || document.getElementById('btn-home-how-to-play');
+  if(btn){
+    btn.onclick = function(e){
+      if(e) e.preventDefault();
+      showScreen('how-to-play');
+    };
+    btn.addEventListener('click', function(e){
+      e.preventDefault();
+      showScreen('how-to-play');
+    });
+  }
+}
+
+// Make navigation functions globally accessible
+window.showScreen = showScreen;
+window.goHome = goHome;
+window.initHowToPlayListener = initHowToPlayListener;
+
 window.addEventListener('popstate', (e)=>{
-  if(e.state && e.state.screen && SCREENS.includes(e.state.screen)){
+  if(e.state && e.state.screen){
     showScreen(e.state.screen, false);
   } else {
-    showScreen('screen-home', false);
+    const hash = (window.location.hash || '').replace('#', '');
+    if(hash && (hash === 'how-to-play' || hash === 'rules' || hash === 'setup')){
+      showScreen(hash, false);
+    } else {
+      showScreen('screen-home', false);
+    }
   }
 });
+
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', initHowToPlayListener);
+} else {
+  initHowToPlayListener();
+}
 
 async function generateCase(){
   if(state.isGenerating) return;
@@ -139,7 +189,7 @@ async function generateCase(){
 
   try{
     const res = await api('/api/cases/generate', {method:'POST', body:{
-      difficulty: state.difficulty, crime_type: state.crimeType, api_key: state.apiKey || undefined
+      difficulty: state.difficulty, crime_type: state.crimeType
     }});
     state.case = res.case;
     state.caseId = res.case_id;
@@ -387,7 +437,7 @@ async function askQuestion(){
 
   try{
     const res = await api(`/api/cases/${state.caseId}/interrogate`, {method:'POST', body:{
-      suspect_id: suspectId, question, evidence_id: evidenceId, api_key: state.apiKey || undefined
+      suspect_id: suspectId, question, evidence_id: evidenceId
     }});
     state.chatHistories[suspectId] = normalizeHistory(res.history && res.history.length ? res.history : [
       ...(state.chatHistories[suspectId]||[]),
@@ -437,7 +487,7 @@ function renderHints(){
 
 async function requestHint(level){
   try{
-    const res = await api(`/api/cases/${state.caseId}/hint`, {method:'POST', body:{ hint_level: level, api_key: state.apiKey || undefined }});
+    const res = await api(`/api/cases/${state.caseId}/hint`, {method:'POST', body:{ hint_level: level }});
     state.hintsRevealed.push({level, text: res.hint});
     switchTab('hints');
   }catch(e){}
@@ -485,7 +535,6 @@ async function submitAccusation(){
       motive_provided: motive,
       evidence_ids: Array.from(state.selectedEvidenceIds),
       player_name: state.playerName,
-      api_key: state.apiKey || undefined,
       hints_used: state.hintsRevealed.length,
     }});
     renderVerdict(res.verdict);

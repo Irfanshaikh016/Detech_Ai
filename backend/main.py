@@ -43,7 +43,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 # Register API router
@@ -54,6 +54,14 @@ FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "fr
 INDEX_HTML = os.path.join(FRONTEND_DIR, "index.html")
 if os.path.isdir(FRONTEND_DIR):
     app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    favicon_path = os.path.join(FRONTEND_DIR, "favicon.ico")
+    if os.path.exists(favicon_path):
+        return FileResponse(favicon_path, media_type="image/x-icon")
+    svg_icon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🔍</text></svg>'
+    return Response(content=svg_icon, media_type="image/svg+xml")
 
 @app.get("/api/health")
 def health():
