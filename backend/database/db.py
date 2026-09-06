@@ -402,3 +402,19 @@ def get_all_interrogation_logs_for_case(case_id):
         return {}
     finally:
         conn.close()
+
+def reset_case_session(case_id: str) -> bool:
+    """Reset a case for replay: removes previous verdict and interrogation logs."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM verdicts WHERE case_id = ?", (case_id,))
+        cursor.execute("DELETE FROM interrogation_logs WHERE case_id = ?", (case_id,))
+        cursor.execute("UPDATE cases SET updated_at = ? WHERE case_id = ?", (datetime.now().isoformat(), case_id))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Error resetting case session: {e}")
+        return False
+    finally:
+        conn.close()

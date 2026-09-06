@@ -1,8 +1,8 @@
 # DetectAI – AI Crime Investigation Game 🕵️‍♂️
 
-**DetectAI** is an AI-assisted crime investigation game and cyber-forensic simulation. Each investigation presents a unique mystery with suspects, motives, evidence, interrogation, clues, and an AI Judge. Players investigate the case, collect evidence, question suspects, and submit an accusation.
+**DetectAI** is an AI-assisted crime investigation game and cyber-forensic simulation. Unlike traditional mystery games that follow static, predictable scripts, DetectAI dynamically orchestrates unique crime mysteries using Google Gemini Generative AI with Grok API secondary fallback, or runs seamlessly in full offline mode with rich, pre-packaged scenario missions.
 
-The project uses a vintage **Noir Web App** powered by FastAPI, Gemini AI integration, SQLite case archives, and an offline fallback mode. The current production deployment runs as a **single Render Web Service**.
+DetectAI features dual frontends (a feature-packed **Cyber-Noir Streamlit UI** and a lightweight, vintage-styled **Noir HTML5/CSS3/JS Single Page Web App**), backed by an asynchronous **FastAPI** engine with persistent **SQLite** case archives, interrogation transcripts, scenario catalogs, and judicial scoring.
 
 ## 🌐 Live Demo
 
@@ -18,60 +18,66 @@ The project uses a vintage **Noir Web App** powered by FastAPI, Gemini AI integr
 ## 🏗️ System Architecture
 
 ```text
-                         ┌──────────────────────────────┐
-                         │       DetectAI Web App        │
-                         │   HTML + CSS + Vanilla JS     │
-                         └──────────────┬───────────────┘
-                                        │ Same-origin REST API
-                                        ▼
-                         ┌──────────────────────────────┐
-                         │       FastAPI Backend         │
-                         │       backend/main.py        │
-                         └───────┬───────────┬──────────┘
-                                 │           │
-                 ┌───────────────┘           └────────────────┐
-                 ▼                                            ▼
-       ┌────────────────────┐                       ┌────────────────────┐
-       │ Google Gemini API  │                       │ SQLite Database    │
-       │ Case generation    │                       │ Cases, logs, scores │
-       │ Interrogation      │                       │ Leaderboard         │
-       │ AI Judge           │                       └────────────────────┘
-       └────────────────────┘
-                 │
-                 ▼
-       ┌────────────────────┐
-       │ Offline Mock Engine│
-       │ Used when AI keys  │
-       │ are unavailable    │
-       └────────────────────┘
+                               ┌────────────────────────────────────────┐
+                               │               DetectAI                 │
+                               └──────────────────┬─────────────────────┘
+                                                  │
+                ┌─────────────────────────────────┴─────────────────────────────────┐
+                ▼                                                                   ▼
+    ┌─────────────────────────────┐                                   ┌─────────────────────────────┐
+    │     Streamlit Interface     │                                   │      Noir Web App (SPA)     │
+    │     (frontend/app.py)       │                                   │      (index.html + app.js)  │
+    │     Port 8501               │                                   │      Served at / on Port 8000│
+    └──────────────┬──────────────┘                                   └──────────────┬──────────────┘
+                   │                                                                 │
+                   └──────────────────────────────┬──────────────────────────────────┘
+                                                  │ HTTP REST / JSON
+                                                  ▼
+                               ┌─────────────────────────────────────┐
+                               │           FastAPI Backend           │
+                               │           (backend/main.py)         │
+                               │           Port 8000                 │
+                               └──────────┬──────────────┬───────────┘
+                                          │              │
+                     ┌────────────────────┴───┐      ┌───┴───────────────────────┐
+                     ▼                        ▼      ▼                           ▼
+            ┌──────────────────┐    ┌────────────────────┐   ┌──────────────────────────────┐
+            │ AI Providers     │    │  SQLite Database   │   │     Offline Mock Engine      │
+            │                  │    │  (detectai.db)     │   │     (mock_cases.py)          │
+            │  1. Gemini REST  │    │  - cases           │   │  - Theft (Easy)              │
+            │  2. Grok Fallback│    │  - interrogation   │   │  - Murder (Medium)           │
+            │  3. Offline Auto │    │  - verdicts        │   │  - Cybercrime (Hard)         │
+            └──────────────────┘    │  - leaderboard     │   │  Zero API Key Needed         │
+                                    └────────────────────┘   └──────────────────────────────┘
 ```
-
-### Deployment model
-
-- **Hosting:** Render Web Service
-- **Frontend:** Served directly by FastAPI
-- **Backend:** FastAPI + Uvicorn
-- **Database:** SQLite
-- **AI:** Gemini/Grok through server-side environment variables
-- **Source control:** GitHub
-- **Deployment:** GitHub push → Render deployment
 
 ---
 
-## 🌟 Key Features
+## 🌟 5 Core Working Features
 
-1. **Procedural mystery generation** across Murder, Theft, Cybercrime, Kidnapping, and Fraud.
-2. **Offline Demo Mode** with pre-packaged cases when AI keys are unavailable.
-3. **Interactive onboarding flow**: Home → How to Play → Rules & Guidelines → Case Setup → Case Generation Loader → Case Briefing.
-4. **Dynamic suspect interrogation** with conversation memory, personalities, secrets, alibis, and stress states.
-5. **Interactive crime-scene investigation** with clues, CCTV records, fingerprints, transcripts, and physical evidence.
-6. **Evidence Locker** for collecting and organizing important clues.
-7. **Three-level hint system** with progressive guidance and scoring penalties.
-8. **AI Judge and deterministic scoring** based on culprit accuracy, evidence strength, motive logic, and investigation thoroughness.
-9. **Case archives and leaderboard** backed by SQLite.
-10. **Responsive Noir interface** built with HTML5, CSS3, and vanilla JavaScript.
-11. **Secure API-key handling** with AI keys kept on the server.
-12. **Automatic same-origin backend configuration** without a settings popup.
+### 1. Scenario-Based Missions
+- **Mission Selector**: Choose between dynamically generated AI mysteries (Procedural Mystery) or curated forensic scenarios:
+  - *The Blackwood Manor Heist* (Theft / Easy) — Recover the stolen Bloodfire Ruby.
+  - *The Cyanide Protocol* (Murder / Medium) — Investigate poisoned pharmaceutical research.
+  - *Project Blackout* (Cybercrime / Hard) — Unmask the insider behind a SCADA grid ransomware attack.
+- Endpoints: `GET /api/scenarios` and `POST /api/cases/generate` with `scenario_id`.
+
+### 2. Investigation Gameplay Loop
+- **Multi-Location Crime Scenes**: Investigate individual rooms, research facilities, and server hubs to discover hidden forensic clues.
+- **Dynamic Case Notebook & Status**: Track visited locations, gathered clues, ongoing interrogation notes, and case status in real time.
+
+### 3. Evidence Collection & Suspect Interrogation
+- **Interactive Clue Inspection**: Inspect collected evidence in a dedicated forensic examination modal featuring item category, forensic observation details, and investigative relevance.
+- **Suspect Interrogation with Memory**: Question suspects individually with natural language questions and present physical evidence to expose contradictions. Suspects update their emotional stress level (`Calm`, `Defensive`, `Nervous`, `Cornered`) in response.
+
+### 4. Progressive Hints & Deterministic Detective Scoring
+- **3-Tier Progressive Hint Desk**: Sequential, locked hint unlocks (Level 1: Directional Nudge, Level 2: Timeline Conflict, Level 3: Smoking Gun Correlation).
+- **Impartial Judicial Evaluation**: The Judge evaluates accusation accuracy, motive explanation, and supporting evidence citations. Scores (0–100) incorporate smoking gun bonuses (+15) and hint penalties (-5 per hint used).
+
+### 5. Replayability & Case Archives
+- **Case Replay**: Replay any solved or unsolved case from the beginning with `POST /api/cases/{case_id}/replay` or the "🔄 Replay This Case" button.
+- **Central Case Archives**: Persistent SQLite records store every case, interrogation log, and verdict. Resume in-progress investigations or review historical verdicts at any time.
+- **Global Leaderboard**: Track high scores, solved cases, and detective rankings.
 
 ---
 
@@ -84,7 +90,7 @@ How to Play
   ↓
 Rules & Guidelines
   ↓
-Case Setup
+Case Setup (Choose Scenario / Crime / Difficulty)
   ↓
 Open a New Case File
   ↓
@@ -92,40 +98,27 @@ Case Generation Loader
   ↓
 Case Briefing
   ↓
-Investigate Evidence + Question Suspects
+Investigate Locations → Inspect Evidence → Question Suspects
   ↓
 Request Hints When Needed
   ↓
 Submit Accusation
   ↓
 AI Judge Verdict + Score
+  ↓
+Replay Case 🔄 / View Leaderboard / Case Archives
 ```
-
-### Navigation and security updates
-
-- The **Backend Settings** modal and gear button have been removed.
-- The frontend resolves the backend automatically:
-
-```javascript
-const BACKEND_URL = window.location.origin;
-```
-
-- API keys are never entered, stored, or exposed in the frontend.
-- Browser navigation supports screen navigation and history handling.
-- A favicon is served through `/favicon.ico`.
 
 ---
 
 ## 💻 Tech Stack
 
-- **Language:** Python 3.9+
-- **Backend:** FastAPI, Uvicorn, Pydantic, HTTPX
-- **Frontend:** HTML5, CSS3, Vanilla JavaScript, ES6
-- **AI Integration:** Google Gemini REST API and optional Grok integration
-- **Database:** SQLite
-- **Testing:** Pytest, FastAPI TestClient
-- **Deployment:** Render
-- **Version Control:** Git and GitHub
+- **Backend**: Python 3.9+, FastAPI, Uvicorn, SQLite, Pydantic v2, HTTPX, Mangum (serverless adapter).
+- **Frontend 1**: Streamlit, Web Audio API, custom cyber-noir CSS.
+- **Frontend 2**: Vanilla HTML5, modern CSS3, ES6 JavaScript (zero npm build step needed).
+- **AI Providers**: Google Gemini API (`gemini-3.5-flash-lite`), Grok API (`grok-beta` / OpenAI compatible), Offline Mock Fallback.
+- **Testing**: Pytest, FastAPI TestClient (44 integration tests).
+- **Deployment**: Render, Vercel Serverless, Streamlit Community Cloud.
 
 ---
 
@@ -139,9 +132,11 @@ DetectAI/
 │   └── favicon.ico         # Browser favicon
 ├── backend/
 │   ├── main.py             # FastAPI application
-│   ├── mock_cases.py       # Offline fallback cases
+│   ├── routes/             # Case & API routers
+│   ├── services/           # Gemini/Grok API & mock cases
+│   ├── database/           # SQLite DB layer
 │   └── tests/
-│       └── test_api.py     # Automated tests
+│       └── test_api.py     # Automated integration tests
 ├── requirements.txt
 ├── render.yaml
 ├── run.py
@@ -162,8 +157,8 @@ DetectAI/
 ### Clone the repository
 
 ```bash
-git clone https://github.com/Irfanshaikh016/Detech_Ai.git
-cd Detech_Ai
+git clone https://github.com/Irfanshaikh016/Detech_Ai.git detectai
+cd detectai
 ```
 
 ### Create a virtual environment
@@ -173,13 +168,11 @@ python -m venv venv
 ```
 
 **Windows:**
-
 ```bash
 .\venv\Scripts\activate
 ```
 
 **macOS/Linux:**
-
 ```bash
 source venv/bin/activate
 ```
@@ -196,22 +189,31 @@ Create a `.env` file from `.env.example`:
 
 ```env
 GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_MODEL=gemini-3.5-flash-lite
 GROK_API_KEY=your_grok_api_key_here
-GEMINI_MODEL=gemini-2.5-flash
 PORT=8000
+BACKEND_URL=http://127.0.0.1:8000
 ```
 
-> API keys are optional. Without a valid key, DetectAI uses its offline mock engine.
+> **Note**: API keys are **not required** to play DetectAI. If keys are missing or unavailable, the game runs automatically in **Offline Mode** with complete scenario missions.
 
 ### Run locally
 
+DetectAI includes a unified launcher script (`run.py`):
+
+**Mode A: FastAPI Backend + Noir Web App (Recommended)**
 ```bash
+python run.py --backend
+# or:
 python run.py --web
 ```
+*Starts FastAPI on `http://127.0.0.1:8000`. Visiting `http://127.0.0.1:8000` in your browser loads the Noir case-file single-page web app directly! Interactive Swagger API docs are available at `http://127.0.0.1:8000/docs`.*
 
-Open `http://127.0.0.1:8000` in your browser.
-
-API documentation is available at `http://127.0.0.1:8000/docs`.
+**Mode B: Streamlit UI**
+```bash
+python run.py --mode streamlit
+```
+*Launches the Streamlit Cyber-Noir detective dashboard at `http://localhost:8501`.*
 
 ---
 
@@ -219,41 +221,48 @@ API documentation is available at `http://127.0.0.1:8000/docs`.
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/api/health` | Service health status |
-| `GET` | `/api/cases` | List recent case history |
-| `POST` | `/api/cases/generate` | Generate a new case |
-| `GET` | `/api/cases/{case_id}` | Retrieve sanitized case data |
-| `GET` | `/api/cases/{case_id}/logs` | Retrieve interrogation transcripts |
-| `GET` | `/api/cases/{case_id}/verdict` | Retrieve a saved verdict |
-| `POST` | `/api/cases/{case_id}/interrogate` | Ask a suspect a question |
-| `GET` | `/api/cases/{case_id}/interrogate/{suspect_id}` | Retrieve suspect history |
-| `POST` | `/api/cases/{case_id}/hint` | Request a progressive hint |
-| `POST` | `/api/cases/{case_id}/judge` | Submit an accusation |
-| `GET` | `/api/cases/leaderboard` | View detective rankings |
+| `GET` | `/api/health` | Service health status (`{"status": "ok"}`). |
+| `GET` | `/api/scenarios` | List curated scenario missions catalog. |
+| `GET` | `/api/cases` | List recent case history with status and score. |
+| `POST` | `/api/cases/generate` | Generate a new case (Gemini → Grok → Offline fallback) or scenario mission. |
+| `GET` | `/api/cases/{case_id}` | Retrieve sanitized case data (ground truth hidden). |
+| `POST` | `/api/cases/{case_id}/replay` | Reset case logs and verdict to replay case from beginning. |
+| `GET` | `/api/cases/{case_id}/logs` | Retrieve all suspect interrogation transcripts for a case. |
+| `GET` | `/api/cases/{case_id}/verdict`| Retrieve saved verdict if completed. |
+| `POST` | `/api/cases/{case_id}/interrogate` | Interrogate a suspect with question & evidence. |
+| `GET` | `/api/cases/{case_id}/interrogate/{suspect_id}` | Retrieve interrogation history for a suspect. |
+| `POST` | `/api/cases/{case_id}/hint` | Request progressive hint (Level 1–3). |
+| `POST` | `/api/cases/{case_id}/judge` | Submit accusation for AI Judge verdict & score. |
+| `GET` | `/api/cases/leaderboard` | View top detective scores and rankings. |
 
 ---
 
-## 🧪 Testing
+## 🧪 Running the Test Suite
 
-Run the complete test suite:
-
+Run the complete automated test suite with pytest:
 ```bash
 pytest backend/tests -v
 ```
 
-The latest implementation report recorded:
-
-```text
-40 passed
-```
-
-Coverage includes health checks, offline case generation, case retrieval, invalid-case handling, interrogation memory, hint progression, accusation scoring, leaderboard integration, frontend asset mounting, onboarding navigation, settings-modal removal, and case-generation integration.
+All 44 integration tests cover:
+- Health checks
+- Scenario missions catalog & scenario ID case generation
+- Offline multi-category generation (Theft, Murder, Cybercrime)
+- Case retrieval & sanitized ground truth protection
+- Missing/invalid case ID handling (404/400)
+- Suspect interrogation transcripts and conversation memory
+- Hint progression (Levels 1, 2, 3)
+- Accusation scoring & edge cases (smoking gun bonuses, zero evidence penalties, hint deductions, wrong suspects)
+- Leaderboard integration and case title joins
+- Dual AI Provider pipelines (Gemini 503 retry, Grok fallback, offline fallback)
+- Evidence inspection modal and Case Replay UI/endpoints
+- Frontend static asset mounting & complete onboarding navigation flow
 
 ---
 
 ## ☁️ Render Deployment
 
-The application is deployed as a **single Render Web Service**.
+The application is deployed as a single Render Web Service.
 
 ### Render settings
 
@@ -275,120 +284,14 @@ Add these in **Render → Environment → Environment Variables**:
 ```text
 GEMINI_API_KEY=your_gemini_api_key
 GROK_API_KEY=your_grok_api_key
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.5-flash-lite
 ```
 
-The API keys must remain server-side. Do not place them in `frontend/app.js` or expose them through browser settings.
-
-### Deployment workflow
-
-```text
-GitHub push
-   ↓
-Render detects new commit
-   ↓
-Render installs dependencies
-   ↓
-Render starts FastAPI
-   ↓
-Health check passes
-   ↓
-Application becomes live
-```
-
-After deployment, verify:
-
-```text
-https://detech-ai.onrender.com
-https://detech-ai.onrender.com/api/health
-https://detech-ai.onrender.com/docs
-```
-
----
-
-## ⚡ Performance and Optimization
-
-### Token consumption
-
-- Send compact case summaries instead of complete database records.
-- Avoid repeating system instructions and evidence.
-- Limit conversation history to relevant messages.
-- Use structured JSON responses.
-- Set output-token limits.
-- Cache repeated AI results when appropriate.
-- Use offline fallback for demo scenarios.
-
-### Response latency
-
-- Use asynchronous FastAPI endpoints for AI operations.
-- Avoid duplicate frontend API requests.
-- Select only required database fields.
-- Add indexes to frequently queried columns.
-- Cache static assets and repeated responses.
-- Use loading states for case generation.
-- Keep AI processing separate from normal page navigation.
-
-### Frontend optimization
-
-- Use `defer` for JavaScript loading.
-- Keep the frontend dependency-free.
-- Load only the required screen content.
-- Compress images and static assets.
-- Debounce search and filter inputs.
-
----
-
-## 🔄 CI/CD with GitHub Actions
-
-The recommended pipeline is:
-
-```text
-Pull request or push to main
-          ↓
-Install dependencies
-          ↓
-Run automated tests
-          ↓
-Validate frontend assets
-          ↓
-Build/check application
-          ↓
-Deploy to Render
-```
-
-The workflow can be placed at `.github/workflows/ci-cd.yml`. Deployment should occur only after the test job succeeds. Render can handle the final production deployment through its GitHub integration or deploy hook.
-
----
-
-## 🛠️ Troubleshooting
-
-### Homepage loads but a button does nothing
-
-1. Open browser DevTools with `F12`.
-2. Check the **Console** tab for JavaScript errors.
-3. Check the **Network** tab for failed `app.js` or frontend asset requests.
-4. Confirm the deployed Render commit is the latest commit.
-5. Hard-refresh the browser with `Ctrl + Shift + R`.
-
-### Favicon returns 404
-
-Confirm that `frontend/favicon.ico` exists and that the backend serves `/favicon.ico`. A favicon error normally does not prevent the application from working.
-
-### AI generation fails
-
-- Verify `GEMINI_API_KEY` or `GROK_API_KEY` in Render environment variables.
-- Confirm the keys are not exposed in frontend code.
-- Check Render logs.
-- Test offline mode without an API key.
-
-### API returns 404
-
-- Confirm the request uses the correct `/api/...` endpoint.
-- Confirm the frontend uses `window.location.origin`.
-- Check that the Render service is running and the health endpoint returns successfully.
+The API keys remain server-side and are never exposed to the frontend.
 
 ---
 
 ## 📜 License and Acknowledgments
 
-Built as an SY B.Sc. AI & ML project. Powered by FastAPI, SQLite, Google Gemini AI, and a vintage Noir web interface.
+Built as an SY B.Sc. AI & ML Project. Powered by Google Gemini AI, Grok API, FastAPI, SQLite, and Streamlit.
+

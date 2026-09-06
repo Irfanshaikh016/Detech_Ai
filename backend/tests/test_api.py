@@ -888,4 +888,123 @@ def test_scenario_12_difficulty_selection_preserved(client):
             assert len(case["locations"]) >= 1
 
 
+# =====================================================================
+# 5 Core Features: Scenario Missions, Inspection, & Replayability Tests
+# =====================================================================
+
+def test_get_scenarios_catalog(client):
+    """Verify scenarios catalog endpoint returns all curated scenarios."""
+    res = client.get("/api/scenarios")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "success"
+    assert "scenarios" in data
+    scenarios = data["scenarios"]
+    assert len(scenarios) >= 3
+    ids = [s["id"] for s in scenarios]
+    assert "scenario_theft_easy" in ids
+    assert "scenario_murder_medium" in ids
+    assert "scenario_cyber_hard" in ids
+
+    # Also test /api/cases/scenarios alias
+    res_alias = client.get("/api/cases/scenarios")
+    assert res_alias.status_code == 200
+    assert len(res_alias.json()["scenarios"]) >= 3
+
+
+def test_generate_case_by_scenario_id(client):
+    """Verify generating a case with a specific scenario_id generates that exact mission."""
+    res = client.post("/api/cases/generate", json={
+        "scenario_id": "scenario_murder_medium"
+    })
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "success"
+    case = data["case"]
+    assert case["crime_type"] == "Murder"
+    assert case["difficulty"] == "Medium"
+    assert "Cyanide" in case["title"] or "Blackwood" in case["title"]
+    assert "ground_truth" not in case
+
+
+def test_case_replay_endpoint(client):
+    """Verify POST /api/cases/{case_id}/replay resets logs and verdicts for a fresh playthrough."""
+    # 1. Generate case
+    gen = client.post("/api/cases/generate", json={"difficulty": "Easy", "crime_type": "Theft"})
+    case_id = gen.json()["case_id"]
+    suspect_id = gen.json()["case"]["suspects"][0]["id"]
+
+    # 2. Interrogate suspect
+    client.post(f"/api/cases/{case_id}/interrogate", json={
+        "suspect_id": suspect_id,
+        "question": "Where were you?"
+    })
+    # Verify log exists
+    logs_before = client.get(f"/api/cases/{case_id}/logs").json()
+    assert len(logs_before["interrogations"]) >= 1
+
+    # 3. Submit verdict
+    client.post(f"/api/cases/{case_id}/judge", json={
+        "accused_suspect_id": "suspect_1",
+        "motive_provided": "Needed money for debt.",
+        "evidence_ids": ["ev_1"],
+        "player_name": "Replay Tester"
+    })
+    # Verify verdict exists
+    v_before = client.get(f"/api/cases/{case_id}/verdict").json()
+    assert v_before["verdict"] is not None
+
+    # 4. Replay case
+    replay_res = client.post(f"/api/cases/{case_id}/replay")
+    assert replay_res.status_code == 200
+    replay_data = replay_res.json()
+    assert replay_data["status"] == "success"
+    assert replay_data["case"]["id"] == case_id
+    assert "ground_truth" not in replay_data["case"]
+
+    # 5. Verify logs and verdicts are wiped clean
+    logs_after = client.get(f"/api/cases/{case_id}/logs").json()
+    assert logs_after["interrogations"] == {}
+
+    v_after = client.get(f"/api/cases/{case_id}/verdict").json()
+    assert v_after["verdict"] is None
+
+    # 6. Verify case status is reset to In Progress
+    cases_res = client.get("/api/cases")
+    target = next((c for c in cases_res.json()["cases"] if c["case_id"] == case_id), None)
+    assert target is not None
+    assert target["is_completed"] is False
+    assert target["status"] == "In Progress"
+
+
+def test_scenario_and_evidence_inspect_and_replay_frontend(client):
+    """Verify frontend HTML and JS have scenario choices, evidence inspect modal, and replay UI."""
+    html_res = client.get("/")
+    assert html_res.status_code == 200
+    html = html_res.text
+
+    # Scenario choices UI on setup screen
+    assert 'id="scenario-choices"' in html
+    assert 'id="scenario-desc"' in html
+    assert "Mission / Scenario" in html
+
+    # Evidence inspection modal UI
+    assert 'id="evidence-inspect-modal"' in html
+    assert 'id="inspect-name"' in html
+    assert 'id="inspect-desc"' in html
+    assert 'id="inspect-relevance"' in html
+
+    # JavaScript bindings in static app.js
+    js_res = client.get("/static/app.js")
+    assert js_res.status_code == 200
+    js = js_res.text
+    assert "SCENARIO_MISSIONS" in js
+    assert "pickScenario" in js
+    assert "openEvidenceInspect" in js
+    assert "closeEvidenceInspect" in js
+    assert "replayCase" in js
+    assert "Replay This Case" in js
+
+
+
 

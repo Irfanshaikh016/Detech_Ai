@@ -1,10 +1,18 @@
 /* DetectAI frontend — talks to FastAPI backend at /api/cases/* */
 const BACKEND_URL = window.location.origin;
 
+const SCENARIO_MISSIONS = [
+  { id: 'procedural', label: '🤖 Dynamic AI Mystery', desc: 'Procedurally generated case crafted by AI based on chosen crime & difficulty.' },
+  { id: 'scenario_theft_easy', label: '💎 The Vanishing Ruby (Theft · Easy)', crime: 'Theft', diff: 'Easy', desc: 'A 50-carat ruby disappears from Lord Blackwood\'s secured vault during his birthday gala.' },
+  { id: 'scenario_murder_medium', label: '☠ The Midnight Cyanide (Murder · Med)', crime: 'Murder', diff: 'Medium', desc: 'Dr. Alistair Vance is discovered poisoned with potassium cyanide in his espresso mug.' },
+  { id: 'scenario_cyber_hard', label: '⚡ The Apex Grid Blackout (Cyber · Hard)', crime: 'Cybercrime', diff: 'Hard', desc: 'Cascading power grid failure triggered by DarkVolt ransomware demanding a 500 BTC payout.' },
+];
+
 const state = {
   playerName: 'Detective',
   crimeType: 'Murder',
   difficulty: 'Medium',
+  scenarioId: 'procedural',
   case: null,
   caseId: null,
   visitedLocations: new Set(),
@@ -29,13 +37,45 @@ function renderTopbarActions(){
 }
 
 function initSetup(){
+  const sBox = document.getElementById('scenario-choices');
+  if(sBox){
+    sBox.innerHTML = SCENARIO_MISSIONS.map(s =>
+      `<button class="choice ${s.id===state.scenarioId?'active':''}" onclick="pickScenario('${s.id}')">${s.label}</button>`
+    ).join('');
+    const curScen = SCENARIO_MISSIONS.find(s => s.id === state.scenarioId) || SCENARIO_MISSIONS[0];
+    const descEl = document.getElementById('scenario-desc');
+    if(descEl) descEl.textContent = curScen.desc || '';
+  }
+
   document.getElementById('crime-choices').innerHTML = CRIME_TYPES.map(c =>
     `<button class="choice ${c===state.crimeType?'active':''}" onclick="pickCrime('${c}')">${c}</button>`).join('');
   document.getElementById('diff-choices').innerHTML = DIFFICULTIES.map(d =>
     `<button class="choice ${d===state.difficulty?'active':''}" onclick="pickDiff('${d}')">${d}</button>`).join('');
 }
-function pickCrime(c){ state.crimeType = c; initSetup(); }
-function pickDiff(d){ state.difficulty = d; initSetup(); }
+
+function pickScenario(sId){
+  state.scenarioId = sId;
+  const s = SCENARIO_MISSIONS.find(x => x.id === sId);
+  if(s && s.crime){
+    state.crimeType = s.crime;
+    state.difficulty = s.diff;
+  }
+  initSetup();
+}
+
+function pickCrime(c){
+  state.crimeType = c;
+  const cur = SCENARIO_MISSIONS.find(x => x.id === state.scenarioId);
+  if(cur && cur.crime && cur.crime !== c) state.scenarioId = 'procedural';
+  initSetup();
+}
+
+function pickDiff(d){
+  state.difficulty = d;
+  const cur = SCENARIO_MISSIONS.find(x => x.id === state.scenarioId);
+  if(cur && cur.diff && cur.diff !== d) state.scenarioId = 'procedural';
+  initSetup();
+}
 
 renderTopbarActions();
 initSetup();
@@ -189,7 +229,9 @@ async function generateCase(){
 
   try{
     const res = await api('/api/cases/generate', {method:'POST', body:{
-      difficulty: state.difficulty, crime_type: state.crimeType
+      difficulty: state.difficulty,
+      crime_type: state.crimeType,
+      scenario_id: state.scenarioId !== 'procedural' ? state.scenarioId : undefined
     }});
     state.case = res.case;
     state.caseId = res.case_id;
@@ -300,20 +342,46 @@ function visitLocation(locId){
   toast(`Searched ${loc.name} — ${(loc.evidence_ids||[]).length} clue(s) added to the evidence locker.`);
 }
 
+function openEvidenceInspect(evidenceId){
+  const all = (state.case && state.case.evidence) || [];
+  const ev = all.find(e => e.id === evidenceId);
+  if(!ev) return;
+  document.getElementById('inspect-name').textContent = ev.name || 'Unknown Evidence';
+  document.getElementById('inspect-category').textContent = (ev.category || 'Physical Evidence') + ' · ' + (ev.importance || 'Important');
+  document.getElementById('inspect-location').textContent = ev.location || 'Crime Scene';
+  document.getElementById('inspect-desc').textContent = ev.description || 'No detailed forensic notes recorded.';
+  document.getElementById('inspect-relevance').textContent = ev.relevance || 'Correlate this clue against suspect statements and timeline.';
+  const stars = ev.stars || (ev.importance === 'Critical' ? 5 : (ev.importance === 'Low' ? 2 : 3));
+  document.getElementById('inspect-stars').textContent = '★'.repeat(stars) + '☆'.repeat(Math.max(0, 5 - stars));
+  const modal = document.getElementById('evidence-inspect-modal');
+  if(modal) modal.classList.remove('hidden');
+}
+
+function closeEvidenceInspect(){
+  const modal = document.getElementById('evidence-inspect-modal');
+  if(modal) modal.classList.add('hidden');
+}
+
+window.openEvidenceInspect = openEvidenceInspect;
+window.closeEvidenceInspect = closeEvidenceInspect;
+
 function renderEvidence(){
   const all = state.case.evidence || [];
   const found = all.filter(e=>state.discoveredEvidence.has(e.id));
   return `
     <div class="section-head"><h2>🗂 Evidence Locker</h2></div>
-    <div class="section-desc">Clues you've uncovered while searching locations.</div>
+    <div class="section-desc">Click any piece of evidence to inspect forensic observations, relevance, and details.</div>
     ${found.length===0 ? `<div class="locked-note">No evidence yet — go investigate a location first.</div>` : `
     <div class="grid-cards">
       ${found.map(e=>`
-        <div class="card ev-card" data-imp="${e.importance||'Medium'}">
+        <div class="card ev-card" data-imp="${e.importance||'Medium'}" onclick="openEvidenceInspect('${e.id}')" style="cursor:pointer;" title="Click to inspect this clue">
           <div class="meta">${escapeHtml(e.category||'')} · ${escapeHtml(e.location||'')}</div>
-          <h3>${escapeHtml(e.name)}</h3>
+          <h3 style="margin:4px 0 6px;">${escapeHtml(e.name)}</h3>
           <p>${escapeHtml(e.description||'')}</p>
-          <div class="stars">${'★'.repeat(e.stars||3)}${'☆'.repeat(5-(e.stars||3))}</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
+            <div class="stars">${'★'.repeat(e.stars||3)}${'☆'.repeat(5-(e.stars||3))}</div>
+            <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); openEvidenceInspect('${e.id}')" style="padding:4px 8px;font-size:11px;">🔍 Inspect Clue</button>
+          </div>
         </div>`).join('')}
     </div>`}
   `;
@@ -564,7 +632,8 @@ function renderVerdict(v){
     </div>
     <div style="display:flex; gap:12px; justify-content:center; margin-top:26px; flex-wrap:wrap;">
       <button class="btn" onclick="showLeaderboard()">View Leaderboard</button>
-      <button class="btn btn-primary" onclick="showScreen('screen-setup')">Start Another Case →</button>
+      <button class="btn btn-primary" onclick="replayCase(state.caseId)">🔄 Replay This Case</button>
+      <button class="btn btn-ghost" onclick="showScreen('screen-setup')">Start Another Case →</button>
       <button class="btn btn-ghost" onclick="goHome()">Home</button>
     </div>`;
 }
@@ -621,7 +690,10 @@ async function showCaseHistory(){
           <h3 style="margin:0 0 4px;font-size:17px;">${escapeHtml(c.title)}</h3>
           <div style="font-size:12px;color:var(--muted);">Victim: <b>${escapeHtml(c.victim_name)}</b> · ${c.log_count || 0} interrogation records</div>
         </div>
-        <div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button class="btn btn-sm btn-ghost" onclick="replayCase('${c.case_id}')" title="Replay this case from the beginning">
+            🔄 Replay
+          </button>
           <button class="btn btn-sm btn-primary" onclick="resumeCase('${c.case_id}')">
             ${c.is_completed ? 'Review Verdict →' : 'Resume Investigation →'}
           </button>
@@ -641,6 +713,31 @@ function lookupCaseById(){
     return;
   }
   resumeCase(id);
+}
+
+async function replayCase(caseId){
+  if(!caseId) return;
+  try{
+    toast(`Replaying case ${caseId}…`);
+    const res = await api(`/api/cases/${caseId}/replay`, {method: 'POST'});
+    if(!res || !res.case){
+      throw new Error(res?.detail || 'Failed to replay case');
+    }
+    state.case = res.case;
+    state.caseId = res.case.case_id || caseId;
+    state.visitedLocations = new Set();
+    state.discoveredEvidence = new Set();
+    state.chatHistories = {};
+    state.hintsRevealed = [];
+    state.selectedEvidenceIds = new Set();
+    state.accusedSuspectId = null;
+
+    renderBriefing();
+    showScreen('screen-briefing');
+    toast(`Case ${state.case.title} reset and ready for investigation!`);
+  }catch(err){
+    toast(`Could not replay case: ${err.message}`, true);
+  }
 }
 
 async function resumeCase(caseId){
@@ -705,3 +802,10 @@ async function resumeCase(caseId){
     toast(`Could not load case ${caseId}: ${err.message}`, true);
   }
 }
+
+window.showLeaderboard = showLeaderboard;
+window.showCaseHistory = showCaseHistory;
+window.lookupCaseById = lookupCaseById;
+window.resumeCase = resumeCase;
+window.replayCase = replayCase;
+

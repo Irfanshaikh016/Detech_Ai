@@ -481,6 +481,70 @@ def get_mock_case(difficulty: str = "Easy", crime_type: str = "Theft") -> Dict[s
     case_copy["provider"] = "offline"
     return case_copy
 
+SCENARIOS_CATALOG = [
+    {
+        "id": "scenario_theft_easy",
+        "title": "The Vanishing Ruby at Blackwood Manor",
+        "crime_type": "Theft",
+        "difficulty": "Easy",
+        "description": "A 50-carat ruby disappears from Lord Blackwood's vault during his 60th birthday gala.",
+        "victim_name": "Lord Reginald Blackwood",
+        "suspect_count": 3,
+        "clue_count": 5
+    },
+    {
+        "id": "scenario_murder_medium",
+        "title": "The Midnight Cyanide Protocol",
+        "crime_type": "Murder",
+        "difficulty": "Medium",
+        "description": "A lead biochemist is found poisoned at his lab desk with cyanide laced into his espresso mug.",
+        "victim_name": "Dr. Alistair Vance",
+        "suspect_count": 4,
+        "clue_count": 6
+    },
+    {
+        "id": "scenario_cyber_hard",
+        "title": "The Apex Grid Ransomware Blackout",
+        "crime_type": "Cybercrime",
+        "difficulty": "Hard",
+        "description": "A metropolitan power grid is brought down by DarkVolt polymorphic ransomware demanding 500 BTC.",
+        "victim_name": "David Zheng",
+        "suspect_count": 5,
+        "clue_count": 6
+    }
+]
+
+def list_scenarios():
+    return SCENARIOS_CATALOG
+
+def get_scenario_by_id(scenario_id: str):
+    if not scenario_id:
+        return None
+    s_map = {
+        "scenario_theft_easy": "Easy",
+        "case_easy_101": "Easy",
+        "theft": "Easy",
+        "ruby": "Easy",
+        "scenario_murder_medium": "Medium",
+        "case_med_202": "Medium",
+        "murder": "Medium",
+        "cyanide": "Medium",
+        "scenario_cyber_hard": "Hard",
+        "case_hard_303": "Hard",
+        "cyber": "Hard",
+        "blackout": "Hard",
+    }
+    key = s_map.get(str(scenario_id).lower().strip())
+    if key and key in MOCK_CASES:
+        base = MOCK_CASES[key]
+        case_copy = json_deepcopy(base)
+        case_copy["id"] = f"case_{uuid.uuid4().hex[:8]}"
+        case_copy["difficulty"] = key
+        case_copy["is_fallback"] = True
+        case_copy["provider"] = "offline"
+        return case_copy
+    return None
+
 def json_deepcopy(d):
     import json
     return json.loads(json.dumps(d))

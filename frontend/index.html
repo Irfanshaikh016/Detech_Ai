@@ -600,6 +600,11 @@
       <p class="sub">DetectAI writes a brand new mystery every time you play — a victim, a motive, a room full of liars, and one of them did it. Question suspects, chase down evidence, and build a case the AI Judge will actually believe.</p>
     </div>
     <div class="folder">
+      <div class="field">
+        <label>Mission / Scenario</label>
+        <div class="choice-row" id="scenario-choices" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+        <div id="scenario-desc" style="font-size:12px;color:var(--amber-bright);margin-top:6px;font-family:'Courier Prime',monospace;line-height:1.5;"></div>
+      </div>
       <div class="field"><label>Crime Type</label><div class="choice-row" id="crime-choices"></div></div>
       <div class="field"><label>Difficulty</label><div class="choice-row" id="diff-choices"></div></div>
       <div class="field"><label>Detective Name</label><input type="text" id="player-name" placeholder="e.g. Detective Marlowe" value="Detective"></div>
@@ -696,6 +701,31 @@
       <div class="doc-line w-50"></div>
     </div>
   </div>
+</div>
+
+<div id="evidence-inspect-modal" class="hidden" style="position:fixed;inset:0;background:rgba(8,7,4,0.85);backdrop-filter:blur(4px);z-index:300;display:flex;align-items:center;justify-content:center;padding:20px;">
+  <div class="card" style="background:var(--bg-panel);border:1.5px solid var(--amber);border-radius:6px;max-width:520px;width:100%;padding:24px;box-shadow:var(--shadow);">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
+      <span class="badge badge-amber" id="inspect-category">Forensic Item</span>
+      <span id="inspect-stars" class="stars" style="color:var(--amber);letter-spacing:2px;">★★★☆☆</span>
+    </div>
+    <h3 id="inspect-name" style="margin:0 0 4px;font-size:20px;color:var(--paper);font-family:'Special Elite',cursive;">Clue Name</h3>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px;font-family:'Courier Prime',monospace;">
+      Discovered at: <b id="inspect-location" style="color:var(--paper-dim);">Crime Scene</b>
+    </div>
+    <div style="background:var(--bg-panel-2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;margin-bottom:14px;">
+      <div style="font-size:11px;text-transform:uppercase;color:var(--amber-bright);letter-spacing:1px;margin-bottom:4px;font-weight:700;">Forensic Observation</div>
+      <p id="inspect-desc" style="margin:0;font-size:13px;line-height:1.6;color:var(--paper-dim);font-family:'Courier Prime',monospace;"></p>
+    </div>
+    <div style="background:rgba(90,125,68,0.12);border:1px solid var(--green);border-radius:var(--radius);padding:12px 14px;margin-bottom:18px;">
+      <div style="font-size:11px;text-transform:uppercase;color:var(--green);letter-spacing:1px;margin-bottom:4px;font-weight:700;">Investigative Relevance</div>
+      <p id="inspect-relevance" style="margin:0;font-size:12.5px;line-height:1.6;color:var(--paper-dim);font-family:'Courier Prime',monospace;"></p>
+    </div>
+    <div style="display:flex;justify-content:flex-end;">
+      <button class="btn btn-primary btn-sm" onclick="closeEvidenceInspect()">Done Inspecting</button>
+    </div>
+  </div>
+</div>
 <script src="/static/app.js?v=1.0.1"></script>
 </body>
 </html>

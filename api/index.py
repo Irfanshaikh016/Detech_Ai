@@ -73,6 +73,14 @@ def favicon():
     svg_icon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🔍</text></svg>'
     return Response(content=svg_icon, media_type="image/svg+xml")
 
+@app.get("/api/scenarios")
+def scenarios():
+    try:
+        from backend.services.mock_cases import list_scenarios
+    except ImportError:
+        from services.mock_cases import list_scenarios
+    return {"status": "success", "scenarios": list_scenarios()}
+
 @app.get("/api/health")
 def api_health_check():
     """API health check endpoint"""

@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
 import backend.database.db as db
 import backend.services.gemini_service as gemini_service
+import backend.services.mock_cases as mock_cases
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/cases", tags=["cases"])
@@ -12,6 +13,7 @@ router = APIRouter(prefix="/api/cases", tags=["cases"])
 class GenerateCaseRequest(BaseModel):
     difficulty: str = "Medium" # Easy, Medium, Hard
     crime_type: str = "Murder" # Murder, Theft, Kidnapping, Cybercrime, Fraud
+    scenario_id: Optional[str] = None # Optional named mission e.g. scenario_theft_easy
     api_key: Optional[str] = None
     grok_api_key: Optional[str] = None
 
@@ -36,6 +38,11 @@ class JudgeRequest(BaseModel):
     grok_api_key: Optional[str] = None
     hints_used: Optional[int] = 0
 
+@router.get("/scenarios")
+def list_scenarios_endpoint():
+    """List pre-packaged scenario missions"""
+    return {"status": "success", "scenarios": mock_cases.list_scenarios()}
+
 @router.get("/leaderboard")
 def get_leaderboard_endpoint():
     leaderboard = db.get_leaderboard(limit=10)
@@ -50,12 +57,18 @@ def list_cases_endpoint(limit: int = 15):
 
 @router.post("/generate")
 def generate_case_endpoint(req: GenerateCaseRequest):
-    case_data = gemini_service.generate_crime_case(
-        difficulty=req.difficulty,
-        crime_type=req.crime_type,
-        api_key=req.api_key or "",
-        grok_api_key=req.grok_api_key or ""
-    )
+    case_data = None
+    # Check if a specific pre-packaged scenario mission was requested
+    if req.scenario_id and req.scenario_id not in ["auto", "procedural", ""]:
+        case_data = mock_cases.get_scenario_by_id(req.scenario_id)
+
+    if not case_data:
+        case_data = gemini_service.generate_crime_case(
+            difficulty=req.difficulty,
+            crime_type=req.crime_type,
+            api_key=req.api_key or "",
+            grok_api_key=req.grok_api_key or ""
+        )
     
     if not case_data.get("id") or case_data["id"] == "generated_case_id":
         case_data["id"] = f"case_{uuid.uuid4().hex[:8]}"
@@ -114,6 +127,28 @@ def get_case_verdict_endpoint(case_id: str):
         raise HTTPException(status_code=404, detail="Case not found in database.")
     verdict = db.get_case_verdict(case_id)
     return {"status": "success", "case_id": case_id, "verdict": verdict}
+
+@router.post("/{case_id}/replay")
+def replay_case_endpoint(case_id: str):
+    """Reset an existing case session for replay"""
+    if not case_id or case_id.strip() == "":
+        raise HTTPException(status_code=400, detail="Invalid case ID.")
+    case_data = db.get_case(case_id)
+    if not case_data:
+        raise HTTPException(status_code=404, detail="Case not found in database.")
+    
+    # Reset verdict and interrogation logs in database
+    db.reset_case_session(case_id)
+    
+    sanitized_case = dict(case_data)
+    sanitized_case.pop("ground_truth", None)
+    logger.info(f"Replayed case '{case_id}' successfully")
+    return {
+        "status": "success",
+        "case_id": case_id,
+        "case": sanitized_case,
+        "message": "Case session reset for replay."
+    }
 
 @router.post("/{case_id}/interrogate")
 def interrogate_endpoint(case_id: str, req: InterrogateRequest):
