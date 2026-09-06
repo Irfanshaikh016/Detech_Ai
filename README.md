@@ -55,12 +55,10 @@ DetectAI features dual frontends (a feature-packed **Cyber-Noir Streamlit UI** a
 
 ## 🌟 5 Core Working Features
 
-### 1. Scenario-Based Missions
-- **Mission Selector**: Choose between dynamically generated AI mysteries (Procedural Mystery) or curated forensic scenarios:
-  - *The Blackwood Manor Heist* (Theft / Easy) — Recover the stolen Bloodfire Ruby.
-  - *The Cyanide Protocol* (Murder / Medium) — Investigate poisoned pharmaceutical research.
-  - *Project Blackout* (Cybercrime / Hard) — Unmask the insider behind a SCADA grid ransomware attack.
-- Endpoints: `GET /api/scenarios` and `POST /api/cases/generate` with `scenario_id`.
+### 1. Procedural Mystery Generation & Scenario Engine
+- **Procedural Generation**: Configure Crime Type (Murder, Theft, Kidnapping, Cybercrime, Fraud) and Difficulty (Easy, Medium, Hard) to generate infinite unique mysteries with AI.
+- **Offline Scenario Fallback**: When API keys are unconfigured or unavailable, the backend automatically serves complete pre-packaged scenario cases (*Theft: Blackwood Manor*, *Murder: Cyanide Protocol*, *Cybercrime: Project Blackout*).
+- Endpoints: `POST /api/cases/generate`, `GET /api/scenarios`.
 
 ### 2. Investigation Gameplay Loop
 - **Multi-Location Crime Scenes**: Investigate individual rooms, research facilities, and server hubs to discover hidden forensic clues.
@@ -90,7 +88,7 @@ How to Play
   ↓
 Rules & Guidelines
   ↓
-Case Setup (Choose Scenario / Crime / Difficulty)
+Case Setup (Choose Crime Type & Difficulty)
   ↓
 Open a New Case File
   ↓

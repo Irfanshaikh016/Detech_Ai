@@ -1,18 +1,10 @@
 /* DetectAI frontend — talks to FastAPI backend at /api/cases/* */
 const BACKEND_URL = window.location.origin;
 
-const SCENARIO_MISSIONS = [
-  { id: 'procedural', label: '🤖 Dynamic AI Mystery', desc: 'Procedurally generated case crafted by AI based on chosen crime & difficulty.' },
-  { id: 'scenario_theft_easy', label: '💎 The Vanishing Ruby (Theft · Easy)', crime: 'Theft', diff: 'Easy', desc: 'A 50-carat ruby disappears from Lord Blackwood\'s secured vault during his birthday gala.' },
-  { id: 'scenario_murder_medium', label: '☠ The Midnight Cyanide (Murder · Med)', crime: 'Murder', diff: 'Medium', desc: 'Dr. Alistair Vance is discovered poisoned with potassium cyanide in his espresso mug.' },
-  { id: 'scenario_cyber_hard', label: '⚡ The Apex Grid Blackout (Cyber · Hard)', crime: 'Cybercrime', diff: 'Hard', desc: 'Cascading power grid failure triggered by DarkVolt ransomware demanding a 500 BTC payout.' },
-];
-
 const state = {
   playerName: 'Detective',
   crimeType: 'Murder',
   difficulty: 'Medium',
-  scenarioId: 'procedural',
   case: null,
   caseId: null,
   visitedLocations: new Set(),
@@ -37,43 +29,25 @@ function renderTopbarActions(){
 }
 
 function initSetup(){
-  const sBox = document.getElementById('scenario-choices');
-  if(sBox){
-    sBox.innerHTML = SCENARIO_MISSIONS.map(s =>
-      `<button class="choice ${s.id===state.scenarioId?'active':''}" onclick="pickScenario('${s.id}')">${s.label}</button>`
-    ).join('');
-    const curScen = SCENARIO_MISSIONS.find(s => s.id === state.scenarioId) || SCENARIO_MISSIONS[0];
-    const descEl = document.getElementById('scenario-desc');
-    if(descEl) descEl.textContent = curScen.desc || '';
+  const crimeBox = document.getElementById('crime-choices');
+  if(crimeBox){
+    crimeBox.innerHTML = CRIME_TYPES.map(c =>
+      `<button class="choice ${c===state.crimeType?'active':''}" onclick="pickCrime('${c}')">${c}</button>`).join('');
   }
-
-  document.getElementById('crime-choices').innerHTML = CRIME_TYPES.map(c =>
-    `<button class="choice ${c===state.crimeType?'active':''}" onclick="pickCrime('${c}')">${c}</button>`).join('');
-  document.getElementById('diff-choices').innerHTML = DIFFICULTIES.map(d =>
-    `<button class="choice ${d===state.difficulty?'active':''}" onclick="pickDiff('${d}')">${d}</button>`).join('');
-}
-
-function pickScenario(sId){
-  state.scenarioId = sId;
-  const s = SCENARIO_MISSIONS.find(x => x.id === sId);
-  if(s && s.crime){
-    state.crimeType = s.crime;
-    state.difficulty = s.diff;
+  const diffBox = document.getElementById('diff-choices');
+  if(diffBox){
+    diffBox.innerHTML = DIFFICULTIES.map(d =>
+      `<button class="choice ${d===state.difficulty?'active':''}" onclick="pickDiff('${d}')">${d}</button>`).join('');
   }
-  initSetup();
 }
 
 function pickCrime(c){
   state.crimeType = c;
-  const cur = SCENARIO_MISSIONS.find(x => x.id === state.scenarioId);
-  if(cur && cur.crime && cur.crime !== c) state.scenarioId = 'procedural';
   initSetup();
 }
 
 function pickDiff(d){
   state.difficulty = d;
-  const cur = SCENARIO_MISSIONS.find(x => x.id === state.scenarioId);
-  if(cur && cur.diff && cur.diff !== d) state.scenarioId = 'procedural';
   initSetup();
 }
 
@@ -231,7 +205,6 @@ async function generateCase(){
     const res = await api('/api/cases/generate', {method:'POST', body:{
       difficulty: state.difficulty,
       crime_type: state.crimeType,
-      scenario_id: state.scenarioId !== 'procedural' ? state.scenarioId : undefined
     }});
     state.case = res.case;
     state.caseId = res.case_id;

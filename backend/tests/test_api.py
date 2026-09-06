@@ -977,18 +977,24 @@ def test_case_replay_endpoint(client):
     assert target["status"] == "In Progress"
 
 
-def test_scenario_and_evidence_inspect_and_replay_frontend(client):
-    """Verify frontend HTML and JS have scenario choices, evidence inspect modal, and replay UI."""
+def test_setup_screen_clean_and_evidence_inspect_and_replay_frontend(client):
+    """Verify setup screen has no scenario section, while retaining crime/difficulty and evidence inspect/replay UI."""
     html_res = client.get("/")
     assert html_res.status_code == 200
     html = html_res.text
 
-    # Scenario choices UI on setup screen
-    assert 'id="scenario-choices"' in html
-    assert 'id="scenario-desc"' in html
-    assert "Mission / Scenario" in html
+    # Scenario choices UI removed from setup screen
+    assert 'id="scenario-choices"' not in html
+    assert 'id="scenario-desc"' not in html
+    assert "Mission / Scenario" not in html
 
-    # Evidence inspection modal UI
+    # Core setup controls retained
+    assert 'id="crime-choices"' in html
+    assert 'id="diff-choices"' in html
+    assert 'id="player-name"' in html
+    assert 'id="btn-generate"' in html
+
+    # Evidence inspection modal UI retained
     assert 'id="evidence-inspect-modal"' in html
     assert 'id="inspect-name"' in html
     assert 'id="inspect-desc"' in html
@@ -998,8 +1004,8 @@ def test_scenario_and_evidence_inspect_and_replay_frontend(client):
     js_res = client.get("/static/app.js")
     assert js_res.status_code == 200
     js = js_res.text
-    assert "SCENARIO_MISSIONS" in js
-    assert "pickScenario" in js
+    assert "SCENARIO_MISSIONS" not in js
+    assert "pickScenario" not in js
     assert "openEvidenceInspect" in js
     assert "closeEvidenceInspect" in js
     assert "replayCase" in js
