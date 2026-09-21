@@ -22,12 +22,31 @@ def get_connection():
         # Ensure proper URI scheme for psycopg2
         if raw_url.startswith("postgres://"):
             raw_url = "postgresql://" + raw_url[len("postgres://"):]
+        # Ensure sslmode=require for Supabase hosts
+        if "sslmode=" not in raw_url and ("supabase.co" in raw_url or "pooler.supabase.com" in raw_url):
+            sep = "&" if "?" in raw_url else "?"
+            raw_url = f"{raw_url}{sep}sslmode=require"
         conn = psycopg2.connect(raw_url)
         return conn
     else:
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
         return conn
+
+def get_db_status() -> dict:
+    """Check active database type and connection health."""
+    if is_postgres():
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+            conn.close()
+            return {"type": "supabase_postgres", "connected": True}
+        except Exception as e:
+            return {"type": "supabase_postgres", "connected": False, "error": str(e)}
+    else:
+        return {"type": "sqlite", "connected": True, "file": DB_PATH}
 
 def execute_sql(cursor, query: str, params: tuple = None):
     """Execute SQL query with automatic placeholder adaptation (? for SQLite, %s for PostgreSQL)."""

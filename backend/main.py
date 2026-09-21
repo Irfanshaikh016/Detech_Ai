@@ -17,14 +17,15 @@ for p in (str(ROOT_DIR), str(BACKEND_DIR)):
 load_dotenv()
 
 from contextlib import asynccontextmanager
-from backend.database.db import init_db
+from backend.database.db import init_db, is_postgres, get_db_status
 from backend.routes.cases import router as cases_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("[DetectAI Backend] Initializing SQLite database...")
+    db_type = "Supabase PostgreSQL" if is_postgres() else "SQLite"
+    print(f"[DetectAI Backend] Initializing database ({db_type})...")
     init_db()
-    print("[DetectAI Backend] Database initialized successfully.")
+    print(f"[DetectAI Backend] Database initialized successfully ({db_type}).")
     yield
 
 app = FastAPI(
@@ -71,7 +72,7 @@ def scenarios():
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "database": get_db_status()}
 
 @app.get("/")
 def root():
