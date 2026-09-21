@@ -1,97 +1,197 @@
-"""SQLite database setup for DetectAI"""
+"""Database setup for DetectAI (Dual support: SQLite + Supabase/PostgreSQL)"""
 import sqlite3
 import os
 import json
+import logging
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 DB_PATH = os.environ.get("DETECTAI_TEST_DB", "detectai.db")
 
+def is_postgres() -> bool:
+    """Check if PostgreSQL/Supabase is configured and not running in SQLite test mode."""
+    db_url = os.environ.get("DATABASE_URL", "").strip()
+    return bool(db_url and not os.environ.get("DETECTAI_TEST_DB"))
+
 def get_connection():
-    """Get a database connection"""
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    """Get a database connection (PostgreSQL/Supabase if DATABASE_URL is set, otherwise SQLite)."""
+    if is_postgres():
+        import psycopg2
+        raw_url = os.environ.get("DATABASE_URL", "").strip()
+        # Ensure proper URI scheme for psycopg2
+        if raw_url.startswith("postgres://"):
+            raw_url = "postgresql://" + raw_url[len("postgres://"):]
+        conn = psycopg2.connect(raw_url)
+        return conn
+    else:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+def execute_sql(cursor, query: str, params: tuple = None):
+    """Execute SQL query with automatic placeholder adaptation (? for SQLite, %s for PostgreSQL)."""
+    if is_postgres():
+        pg_query = query.replace("?", "%s")
+        if params is not None:
+            cursor.execute(pg_query, params)
+        else:
+            cursor.execute(pg_query)
+    else:
+        if params is not None:
+            cursor.execute(query, params)
+        else:
+            cursor.execute(query)
 
 def init_db():
-    """Initialize database with required tables"""
+    """Initialize database with required tables (PostgreSQL or SQLite)."""
     conn = get_connection()
     cursor = conn.cursor()
-    
-    # Cases table
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS cases (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        case_id TEXT UNIQUE NOT NULL,
-        case_title TEXT,
-        crime_type TEXT,
-        difficulty TEXT,
-        victim_name TEXT,
-        case_data TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-    
-    # Interrogation logs table
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS interrogation_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        case_id TEXT NOT NULL,
-        suspect_id TEXT NOT NULL,
-        role TEXT,
-        content TEXT,
-        stress_level TEXT,
-        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (case_id) REFERENCES cases(case_id)
-    )
-    """)
-    
-    # Verdicts table
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS verdicts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        case_id TEXT NOT NULL,
-        player_name TEXT,
-        accused_suspect_id TEXT,
-        motive_provided TEXT,
-        is_correct BOOLEAN,
-        score INTEGER,
-        explanation TEXT,
-        supported_clues TEXT,
-        ignored_clues TEXT,
-        difficulty TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (case_id) REFERENCES cases(case_id)
-    )
-    """)
-    
-    # Leaderboard table
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS leaderboard (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        player_name TEXT,
-        score INTEGER,
-        difficulty TEXT,
-        case_id TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-    
-    conn.commit()
-    conn.close()
+    try:
+        if is_postgres():
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS cases (
+                id SERIAL PRIMARY KEY,
+                case_id TEXT UNIQUE NOT NULL,
+                case_title TEXT,
+                crime_type TEXT,
+                difficulty TEXT,
+                victim_name TEXT,
+                case_data TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """)
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS interrogation_logs (
+                id SERIAL PRIMARY KEY,
+                case_id TEXT NOT NULL,
+                suspect_id TEXT NOT NULL,
+                role TEXT,
+                content TEXT,
+                stress_level TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (case_id) REFERENCES cases(case_id)
+            );
+            """)
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS verdicts (
+                id SERIAL PRIMARY KEY,
+                case_id TEXT NOT NULL,
+                player_name TEXT,
+                accused_suspect_id TEXT,
+                motive_provided TEXT,
+                is_correct BOOLEAN,
+                score INTEGER,
+                explanation TEXT,
+                supported_clues TEXT,
+                ignored_clues TEXT,
+                difficulty TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (case_id) REFERENCES cases(case_id)
+            );
+            """)
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS leaderboard (
+                id SERIAL PRIMARY KEY,
+                player_name TEXT,
+                score INTEGER,
+                difficulty TEXT,
+                case_id TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            """)
+        else:
+            # Cases table
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS cases (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                case_id TEXT UNIQUE NOT NULL,
+                case_title TEXT,
+                crime_type TEXT,
+                difficulty TEXT,
+                victim_name TEXT,
+                case_data TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+            # Interrogation logs table
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS interrogation_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                case_id TEXT NOT NULL,
+                suspect_id TEXT NOT NULL,
+                role TEXT,
+                content TEXT,
+                stress_level TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (case_id) REFERENCES cases(case_id)
+            )
+            """)
+            # Verdicts table
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS verdicts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                case_id TEXT NOT NULL,
+                player_name TEXT,
+                accused_suspect_id TEXT,
+                motive_provided TEXT,
+                is_correct BOOLEAN,
+                score INTEGER,
+                explanation TEXT,
+                supported_clues TEXT,
+                ignored_clues TEXT,
+                difficulty TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (case_id) REFERENCES cases(case_id)
+            )
+            """)
+            # Leaderboard table
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS leaderboard (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                player_name TEXT,
+                score INTEGER,
+                difficulty TEXT,
+                case_id TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """)
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Error initializing database: {e}")
+        print(f"Error initializing database: {e}")
+    finally:
+        conn.close()
 
 def save_case(case_id, case_title, crime_type, difficulty, victim_name, case_data):
-    """Save a generated case to database"""
+    """Save a generated case to database (upsert compatible with PostgreSQL and SQLite)"""
     conn = get_connection()
     cursor = conn.cursor()
     try:
         case_data_json = json.dumps(case_data) if isinstance(case_data, dict) else case_data
-        cursor.execute("""
-        INSERT OR REPLACE INTO cases (case_id, case_title, crime_type, difficulty, victim_name, case_data, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (case_id, case_title, crime_type, difficulty, victim_name, case_data_json, datetime.now().isoformat()))
+        now_str = datetime.now().isoformat()
+        if is_postgres():
+            cursor.execute("""
+            INSERT INTO cases (case_id, case_title, crime_type, difficulty, victim_name, case_data, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (case_id) DO UPDATE SET
+                case_title = EXCLUDED.case_title,
+                crime_type = EXCLUDED.crime_type,
+                difficulty = EXCLUDED.difficulty,
+                victim_name = EXCLUDED.victim_name,
+                case_data = EXCLUDED.case_data,
+                updated_at = EXCLUDED.updated_at
+            """, (case_id, case_title, crime_type, difficulty, victim_name, case_data_json, now_str))
+        else:
+            cursor.execute("""
+            INSERT OR REPLACE INTO cases (case_id, case_title, crime_type, difficulty, victim_name, case_data, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (case_id, case_title, crime_type, difficulty, victim_name, case_data_json, now_str))
         conn.commit()
     except Exception as e:
+        logger.error(f"Error saving case: {e}")
         print(f"Error saving case: {e}")
     finally:
         conn.close()
@@ -100,27 +200,33 @@ def get_case(case_id):
     """Retrieve a case from database"""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT case_data FROM cases WHERE case_id = ?", (case_id,))
-    row = cursor.fetchone()
-    conn.close()
-    if row:
-        try:
-            return json.loads(row[0])
-        except:
-            return row[0]
-    return None
+    try:
+        execute_sql(cursor, "SELECT case_data FROM cases WHERE case_id = ?", (case_id,))
+        row = cursor.fetchone()
+        if row:
+            try:
+                return json.loads(row[0])
+            except:
+                return row[0]
+        return None
+    except Exception as e:
+        logger.error(f"Error getting case: {e}")
+        return None
+    finally:
+        conn.close()
 
 def save_interrogation_log(case_id, suspect_id, role, content, stress_level=None):
     """Save interrogation interaction"""
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("""
+        execute_sql(cursor, """
         INSERT INTO interrogation_logs (case_id, suspect_id, role, content, stress_level)
         VALUES (?, ?, ?, ?, ?)
         """, (case_id, suspect_id, role, content, stress_level))
         conn.commit()
     except Exception as e:
+        logger.error(f"Error saving interrogation log: {e}")
         print(f"Error saving interrogation log: {e}")
     finally:
         conn.close()
@@ -129,24 +235,28 @@ def get_interrogation_logs(case_id, suspect_id):
     """Retrieve interrogation history"""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
-    SELECT role, content, stress_level, timestamp FROM interrogation_logs 
-    WHERE case_id = ? AND suspect_id = ?
-    ORDER BY id ASC
-    """, (case_id, suspect_id))
-    rows = cursor.fetchall()
-    conn.close()
-    
-    history = []
-    for row in rows:
-        history.append({
-            "role": row[0],
-            "content": row[1],
-            "message": row[1],
-            "stress_level": row[2],
-            "timestamp": row[3] if len(row) > 3 else None
-        })
-    return history
+    try:
+        execute_sql(cursor, """
+        SELECT role, content, stress_level, timestamp FROM interrogation_logs 
+        WHERE case_id = ? AND suspect_id = ?
+        ORDER BY id ASC
+        """, (case_id, suspect_id))
+        rows = cursor.fetchall()
+        history = []
+        for row in rows:
+            history.append({
+                "role": row[0],
+                "content": row[1],
+                "message": row[1],
+                "stress_level": row[2],
+                "timestamp": str(row[3]) if len(row) > 3 and row[3] is not None else None
+            })
+        return history
+    except Exception as e:
+        logger.error(f"Error fetching interrogation logs: {e}")
+        return []
+    finally:
+        conn.close()
 
 def save_verdict(case_id, player_name, accused_suspect_id, motive_provided, is_correct, score, explanation, supported, ignored, difficulty):
     """Save case verdict"""
@@ -155,20 +265,21 @@ def save_verdict(case_id, player_name, accused_suspect_id, motive_provided, is_c
     try:
         supported_json = json.dumps(supported) if isinstance(supported, list) else supported
         ignored_json = json.dumps(ignored) if isinstance(ignored, list) else ignored
-        cursor.execute("""
+        execute_sql(cursor, """
         INSERT INTO verdicts (case_id, player_name, accused_suspect_id, motive_provided, is_correct, score, explanation, supported_clues, ignored_clues, difficulty)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (case_id, player_name, accused_suspect_id, motive_provided, is_correct, score, explanation, supported_json, ignored_json, difficulty))
         
         # Add to leaderboard if score is recorded
         if score > 0:
-            cursor.execute("""
+            execute_sql(cursor, """
             INSERT INTO leaderboard (player_name, score, difficulty, case_id)
             VALUES (?, ?, ?, ?)
             """, (player_name, score, difficulty, case_id))
         
         conn.commit()
     except Exception as e:
+        logger.error(f"Error saving verdict: {e}")
         print(f"Error saving verdict: {e}")
     finally:
         conn.close()
@@ -178,7 +289,7 @@ def get_leaderboard(limit=10):
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("""
+        execute_sql(cursor, """
         SELECT l.player_name, l.score, l.difficulty, l.case_id, c.case_title, v.is_correct, l.created_at
         FROM leaderboard l
         LEFT JOIN cases c ON l.case_id = c.case_id
@@ -199,33 +310,9 @@ def get_leaderboard(limit=10):
                 "is_correct": bool(row[5]) if row[5] is not None else True,
                 "timestamp": str(row[6]) if row[6] is not None else datetime.now().isoformat()
             })
-        if leaderboard:
-            return leaderboard
-    except sqlite3.OperationalError:
-        pass
-
-    try:
-        cursor.execute("""
-        SELECT jv.player_name, jv.score, jv.is_correct, jv.difficulty, jv.timestamp, jv.case_id, c.title 
-        FROM judge_verdicts jv
-        LEFT JOIN cases c ON jv.case_id = c.id
-        ORDER BY jv.score DESC, jv.timestamp DESC, jv.id DESC
-        LIMIT ?
-        """, (limit,))
-        rows = cursor.fetchall()
-        return [
-            {
-                "player_name": r[0],
-                "score": r[1],
-                "is_correct": bool(r[2]),
-                "difficulty": r[3],
-                "timestamp": r[4],
-                "case_id": r[5],
-                "case_title": r[6] or r[5] or "Mystery Case"
-            }
-            for r in rows
-        ]
-    except Exception:
+        return leaderboard
+    except Exception as e:
+        logger.error(f"Error getting leaderboard: {e}")
         return []
     finally:
         conn.close()
@@ -235,7 +322,7 @@ def get_recent_cases(limit=15):
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("""
+        execute_sql(cursor, """
         SELECT 
             c.case_id, 
             c.case_title, 
@@ -250,7 +337,7 @@ def get_recent_cases(limit=15):
         FROM cases c
         LEFT JOIN verdicts v ON c.case_id = v.case_id
         LEFT JOIN interrogation_logs i ON c.case_id = i.case_id
-        GROUP BY c.case_id
+        GROUP BY c.case_id, c.id, c.case_title, c.crime_type, c.difficulty, c.victim_name, c.created_at, c.updated_at, v.is_correct, v.score
         ORDER BY c.id DESC
         LIMIT ?
         """, (limit,))
@@ -282,29 +369,8 @@ def get_recent_cases(limit=15):
                 "log_count": r[9] or 0
             })
         return cases_list
-    except sqlite3.OperationalError:
-        # Fallback for alternative or minimal schemas
-        try:
-            cursor.execute("SELECT case_id, case_title, crime_type, difficulty, victim_name, created_at FROM cases ORDER BY id DESC LIMIT ?", (limit,))
-            rows = cursor.fetchall()
-            return [
-                {
-                    "case_id": r[0],
-                    "title": r[1] or "Mystery Case",
-                    "crime_type": r[2] or "Unknown",
-                    "difficulty": r[3] or "Medium",
-                    "victim_name": r[4] or "Unknown",
-                    "created_at": str(r[5]) if r[5] else datetime.now().isoformat(),
-                    "is_completed": False,
-                    "status": "In Progress",
-                    "log_count": 0
-                }
-                for r in rows
-            ]
-        except Exception:
-            return []
     except Exception as e:
-        print(f"Error fetching recent cases: {e}")
+        logger.error(f"Error fetching recent cases: {e}")
         return []
     finally:
         conn.close()
@@ -314,7 +380,7 @@ def get_case_verdict(case_id):
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("""
+        execute_sql(cursor, """
         SELECT 
             player_name, accused_suspect_id, motive_provided, is_correct, score, 
             explanation, supported_clues, ignored_clues, difficulty, created_at
@@ -341,7 +407,7 @@ def get_case_verdict(case_id):
             
         # Retrieve ground truth from case_data for completed verdict review
         gt = None
-        cursor.execute("SELECT case_data FROM cases WHERE case_id = ?", (case_id,))
+        execute_sql(cursor, "SELECT case_data FROM cases WHERE case_id = ?", (case_id,))
         c_row = cursor.fetchone()
         if c_row:
             try:
@@ -366,7 +432,7 @@ def get_case_verdict(case_id):
             "ground_truth": gt
         }
     except Exception as e:
-        print(f"Error getting case verdict: {e}")
+        logger.error(f"Error getting case verdict: {e}")
         return None
     finally:
         conn.close()
@@ -376,7 +442,7 @@ def get_all_interrogation_logs_for_case(case_id):
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("""
+        execute_sql(cursor, """
         SELECT suspect_id, role, content, stress_level, timestamp
         FROM interrogation_logs
         WHERE case_id = ?
@@ -398,7 +464,7 @@ def get_all_interrogation_logs_for_case(case_id):
             })
         return grouped_logs
     except Exception as e:
-        print(f"Error getting all interrogation logs: {e}")
+        logger.error(f"Error getting all interrogation logs: {e}")
         return {}
     finally:
         conn.close()
@@ -408,13 +474,13 @@ def reset_case_session(case_id: str) -> bool:
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("DELETE FROM verdicts WHERE case_id = ?", (case_id,))
-        cursor.execute("DELETE FROM interrogation_logs WHERE case_id = ?", (case_id,))
-        cursor.execute("UPDATE cases SET updated_at = ? WHERE case_id = ?", (datetime.now().isoformat(), case_id))
+        execute_sql(cursor, "DELETE FROM verdicts WHERE case_id = ?", (case_id,))
+        execute_sql(cursor, "DELETE FROM interrogation_logs WHERE case_id = ?", (case_id,))
+        execute_sql(cursor, "UPDATE cases SET updated_at = ? WHERE case_id = ?", (datetime.now().isoformat(), case_id))
         conn.commit()
         return True
     except Exception as e:
-        print(f"Error resetting case session: {e}")
+        logger.error(f"Error resetting case session: {e}")
         return False
     finally:
         conn.close()
