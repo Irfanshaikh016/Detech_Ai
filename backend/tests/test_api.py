@@ -1012,5 +1012,32 @@ def test_setup_screen_clean_and_evidence_inspect_and_replay_frontend(client):
     assert "Replay This Case" in js
 
 
+def test_detective_name_validation_setup_page(client):
+    """Verify Detective Name field is marked required, has placeholder 'Your Name', no default value,
+    contains exact inline error 'Please fill in the Detective Name.', and has validation logic in app.js."""
+    html_res = client.get("/")
+    assert html_res.status_code == 200
+    html = html_res.text
+
+    # Detective Name field presence and required attributes
+    assert 'id="player-name"' in html
+    assert 'placeholder="Your Name"' in html
+    assert 'value=""' in html
+    assert 'required' in html
+    assert 'aria-required="true"' in html
+    assert 'id="player-name-error"' in html
+    assert 'Please fill in the Detective Name.' in html
+    assert 'required-star' in html
+
+    # JavaScript validation logic in app.js
+    js_res = client.get("/static/app.js")
+    assert js_res.status_code == 200
+    js = js_res.text
+    assert "validateDetectiveName" in js
+    assert "initPlayerNameListener" in js
+    assert "Please fill in the Detective Name." in js
+    assert "input-error" in js
+
+
 
 

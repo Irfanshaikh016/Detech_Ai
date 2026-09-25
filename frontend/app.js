@@ -2,7 +2,7 @@
 const BACKEND_URL = window.location.origin;
 
 const state = {
-  playerName: 'Detective',
+  playerName: '',
   crimeType: 'Murder',
   difficulty: 'Medium',
   case: null,
@@ -167,6 +167,51 @@ window.showScreen = showScreen;
 window.goHome = goHome;
 window.initHowToPlayListener = initHowToPlayListener;
 
+function validateDetectiveName(){
+  const input = document.getElementById('player-name');
+  const errorEl = document.getElementById('player-name-error');
+  const name = input ? input.value.trim() : '';
+
+  if(!name){
+    if(errorEl){
+      errorEl.textContent = 'Please fill in the Detective Name.';
+      errorEl.classList.remove('hidden');
+    }
+    if(input){
+      input.classList.add('input-error');
+      input.focus();
+    }
+    return null;
+  }
+
+  if(errorEl) errorEl.classList.add('hidden');
+  if(input) input.classList.remove('input-error');
+  return name;
+}
+
+function initPlayerNameListener(){
+  const input = document.getElementById('player-name');
+  const errorEl = document.getElementById('player-name-error');
+  if(!input) return;
+
+  input.addEventListener('input', function(){
+    if(input.value.trim()){
+      if(errorEl) errorEl.classList.add('hidden');
+      input.classList.remove('input-error');
+    }
+  });
+
+  input.addEventListener('keydown', function(e){
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      generateCase();
+    }
+  });
+}
+
+window.validateDetectiveName = validateDetectiveName;
+window.initPlayerNameListener = initPlayerNameListener;
+
 window.addEventListener('popstate', (e)=>{
   if(e.state && e.state.screen){
     showScreen(e.state.screen, false);
@@ -180,14 +225,24 @@ window.addEventListener('popstate', (e)=>{
   }
 });
 
-if(document.readyState === 'loading'){
-  document.addEventListener('DOMContentLoaded', initHowToPlayListener);
-} else {
+function initSetupListeners(){
   initHowToPlayListener();
+  initPlayerNameListener();
+}
+
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', initSetupListeners);
+} else {
+  initSetupListeners();
 }
 
 async function generateCase(){
   if(state.isGenerating) return;
+
+  const validName = validateDetectiveName();
+  if(!validName) return;
+
+  state.playerName = validName;
   state.isGenerating = true;
 
   const btn = document.getElementById('btn-generate');
@@ -198,8 +253,6 @@ async function generateCase(){
 
   const loader = document.getElementById('case-loader-overlay');
   if(loader) loader.classList.remove('hidden');
-
-  state.playerName = document.getElementById('player-name').value.trim() || 'Detective';
 
   try{
     const res = await api('/api/cases/generate', {method:'POST', body:{
